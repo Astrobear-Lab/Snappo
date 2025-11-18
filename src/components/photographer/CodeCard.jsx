@@ -5,11 +5,6 @@ import QRDisplay from './QRDisplay';
 
 const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
   const [showQR, setShowQR] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
-
-  // Generate photo link
-  const photoLink = `${window.location.origin}/photo/${code.code}`;
 
   const formatTimeAgo = (date) => {
     const seconds = Math.floor((new Date() - date) / 1000);
@@ -31,16 +26,8 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
     return `${days}d left`;
   };
 
-  const handleCopyCode = () => {
+  const handleCopy = () => {
     navigator.clipboard.writeText(code.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(photoLink);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   return (
@@ -60,43 +47,6 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
               {code.code}
             </h3>
             <StatusPill status={code.status} />
-          </div>
-
-          {/* Shareable Link */}
-          <div className="mb-3 bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-semibold text-gray-500 uppercase">Share Link</span>
-            </div>
-            <a
-              href={photoLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-teal hover:text-teal/80 underline break-all"
-            >
-              {photoLink}
-            </a>
-            <div className="flex gap-2 mt-2">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleCopyLink}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold transition-colors ${
-                  copiedLink
-                    ? 'bg-green-500 text-white'
-                    : 'bg-teal text-white hover:bg-teal/90'
-                }`}
-              >
-                {copiedLink ? '✓ Copied!' : '🔗 Copy Link'}
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => window.open(photoLink, '_blank')}
-                className="py-1.5 px-3 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-semibold transition-colors"
-              >
-                👁️ Preview
-              </motion.button>
-            </div>
           </div>
 
           {code.note && (
@@ -133,10 +83,11 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
           exit={{ opacity: 0, height: 0 }}
           className="mb-4 pt-4 border-t border-gray-100"
         >
-          <div className="text-center">
-            <p className="text-xs text-gray-500 mb-3">Scan to view photo</p>
-            <QRDisplay code={code.code} link={photoLink} size="medium" />
-          </div>
+          <QRDisplay
+            code={code.code}
+            link={`${window.location.origin}/photo/${code.code}`}
+            size="medium"
+          />
         </motion.div>
       )}
 
@@ -201,14 +152,10 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={handleCopyCode}
-          className={`flex-1 py-2 px-3 font-semibold rounded-lg text-sm transition-colors ${
-            copied
-              ? 'bg-green-500 text-white'
-              : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-          }`}
+          onClick={handleCopy}
+          className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm transition-colors"
         >
-          {copied ? '✓ Copied!' : '📋 Copy Code'}
+          📋 Copy
         </motion.button>
 
         {code.status === 'pending_upload' && (

@@ -31,6 +31,8 @@ const PhotoView = () => {
     setError('');
 
     try {
+      console.log('[PhotoView] Fetching photo with code:', code);
+
       // 1. Find photo code
       const { data: photoCodeData, error: codeError } = await supabase
         .from('photo_codes')
@@ -38,20 +40,38 @@ const PhotoView = () => {
         .eq('code', code.toUpperCase())
         .single();
 
-      if (codeError || !photoCodeData) {
-        setError('Invalid or expired code. Please check and try again.');
+      console.log('[PhotoView] Photo code lookup result:', { photoCodeData, codeError });
+
+      if (codeError) {
+        console.error('[PhotoView] Supabase error:', codeError);
+
+        // Check if Supabase is configured
+        if (codeError.message?.includes('Failed to fetch') || codeError.message?.includes('URL')) {
+          setError('⚠️ Database not configured. Please set up Supabase or use mock data.');
+        } else {
+          setError(`Database error: ${codeError.message || 'Unknown error'}`);
+        }
+        setLoading(false);
+        return;
+      }
+
+      if (!photoCodeData) {
+        console.log('[PhotoView] Code not found in database');
+        setError('Code not found. This code may not exist yet or has been deleted.');
         setLoading(false);
         return;
       }
 
       // 2. Check if expired
       if (photoCodeData.expires_at && new Date(photoCodeData.expires_at) < new Date()) {
+        console.log('[PhotoView] Code expired:', photoCodeData.expires_at);
         setError('This code has expired.');
         setLoading(false);
         return;
       }
 
       setCodeData(photoCodeData);
+      console.log('[PhotoView] Code data loaded:', photoCodeData);
 
       // 3. Get photo details
       const { data: photo, error: photoError } = await supabase
@@ -67,7 +87,16 @@ const PhotoView = () => {
         .eq('id', photoCodeData.photo_id)
         .single();
 
-      if (photoError || !photo) {
+      console.log('[PhotoView] Photo lookup result:', { photo, photoError });
+
+      if (photoError) {
+        console.error('[PhotoView] Photo fetch error:', photoError);
+        setError(`Photo error: ${photoError.message || 'Photo not found'}`);
+        setLoading(false);
+        return;
+      }
+
+      if (!photo) {
         setError('Photo not found.');
         setLoading(false);
         return;
@@ -78,6 +107,8 @@ const PhotoView = () => {
         .from('photos')
         .getPublicUrl(photo.watermarked_url);
 
+      console.log('[PhotoView] Photo loaded successfully');
+
       setPhotoData({
         ...photo,
         watermarked_public_url: watermarkedUrl.publicUrl,
@@ -85,8 +116,8 @@ const PhotoView = () => {
 
       setLoading(false);
     } catch (err) {
-      console.error('Error fetching photo:', err);
-      setError('Failed to load photo. Please try again.');
+      console.error('[PhotoView] Unexpected error:', err);
+      setError(`System error: ${err.message || 'Failed to load photo. Please try again.'}`);
       setLoading(false);
     }
   };

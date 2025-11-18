@@ -31,9 +31,9 @@ A playful, emotional landing page for a photo-based memory platform that connect
 # Install dependencies
 npm install
 
-# Set up environment variables (see Supabase Setup below)
-cp .env .env
-# Edit .env with your Supabase credentials
+# Set up environment variables (REQUIRED!)
+cp .env.example .env
+# Edit .env with your Supabase credentials (see Supabase Setup below)
 
 # Start development server
 npm run dev
@@ -44,6 +44,14 @@ npm run build
 # Preview production build
 npm run preview
 ```
+
+### ⚠️ Important: Environment Variables Required
+
+The app **will not work** without Supabase configuration. You'll see errors like:
+- "Database not configured"
+- "Invalid or expired code"
+
+**Solution**: Create a `.env` file from `.env.example` and add your Supabase credentials.
 
 ### 🔐 Supabase Setup
 

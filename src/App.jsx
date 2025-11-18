@@ -9,6 +9,7 @@ import ForWho from './components/ForWho';
 import CTA from './components/CTA';
 import Footer from './components/Footer';
 import PhotographerDashboard from './components/PhotographerDashboard';
+import PhotoView from './pages/PhotoView';
 
 // Home Page Component
 const HomePage = () => (
@@ -33,6 +34,7 @@ function App() {
               <Routes>
                 <Route path="/" element={<HomePage />} />
                 <Route path="/dashboard" element={<PhotographerDashboard />} />
+                <Route path="/photo/:code" element={<PhotoView />} />
               </Routes>
             </div>
           </div>

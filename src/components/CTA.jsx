@@ -1,15 +1,16 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const CTA = () => {
   const [code, setCode] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (code.length === 6) {
-      alert(`Searching for photo with code: ${code}`);
-      // Add your photo lookup logic here
+      navigate(`/photo/${code.toUpperCase()}`);
     }
   };
 

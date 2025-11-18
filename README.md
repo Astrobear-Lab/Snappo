@@ -90,16 +90,31 @@ npm run preview
 
 ### For Users:
 1. **📸 Camera Flash** - A photographer captures your perfect moment
-2. **🎟️ Get Your Code** - Receive a unique 6-digit code on the spot
-3. **⌨️ Enter & Unlock** - Type your code on our website anytime
-4. **💾 Download** - Get your photo - watermarked free or $3 for full quality
+2. **🎟️ Get Your Code** - Receive a unique 6-digit code on the spot (e.g., ABC123)
+3. **⌨️ Enter Code** - Go to homepage and type your 6-digit code
+4. **👀 View Photo** - See watermarked preview instantly
+5. **💾 Download Options**:
+   - **Free**: Watermarked version (no payment)
+   - **$3**: Full quality original (mock payment for testing)
 
 ### For Photographers:
 1. **✨ Sign Up** - Create an account and apply to become a photographer
 2. **📤 Upload Photos** - Upload photos with drag & drop interface
 3. **🔑 Get Codes** - Automatic 6-digit code generation for each photo
-4. **✅ Auto-Verification** - Upload 3 photos to get verified
-5. **💰 Earn** - Earn $2 per photo sold
+4. **📱 Share Code** - Give code to subject via QR code or verbal
+5. **✅ Auto-Verification** - Upload 3 photos to get verified
+6. **💰 Earn** - Earn $2 per photo sold ($3 total - $1 platform fee)
+
+### 🎭 Mock Payment System (Testing)
+
+The app includes a **mock payment system** for testing without real transactions:
+- Set `MOCK_PAYMENT = true` in `PhotoView.jsx` (default)
+- Click "Unlock Full Quality $3" → simulates 2-second payment
+- No Stripe/real payment required
+- Creates transaction records in database
+- Downloads "original" version automatically
+
+Perfect for testing the full workflow without spending money!
 
 ## 🏗️ Project Structure
 

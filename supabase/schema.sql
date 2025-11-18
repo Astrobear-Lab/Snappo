@@ -290,6 +290,21 @@ CREATE TRIGGER photo_auto_verification AFTER UPDATE ON public.photos
   WHEN (OLD.status IS DISTINCT FROM NEW.status)
   EXECUTE FUNCTION check_photographer_auto_verification();
 
+-- Function to increment photographer earnings and stats
+CREATE OR REPLACE FUNCTION increment_photographer_earnings(
+  p_photographer_id UUID,
+  p_amount DECIMAL
+)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE public.photographer_profiles
+  SET
+    total_photos_sold = total_photos_sold + 1,
+    total_earnings = total_earnings + p_amount
+  WHERE id = p_photographer_id;
+END;
+$$ LANGUAGE plpgsql;
+
 -- =====================================================
 -- Indexes for Performance
 -- =====================================================

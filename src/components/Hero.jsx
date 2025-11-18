@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Hero = () => {
   const [code, setCode] = useState('');
+  const navigate = useNavigate();
 
   const floatingPhotos = [
     { id: 1, rotation: -15, x: -20, y: 20, delay: 0 },
@@ -14,8 +16,7 @@ const Hero = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (code.length === 6) {
-      alert(`Checking for photo with code: ${code}`);
-      // Add navigation logic here
+      navigate(`/photo/${code.toUpperCase()}`);
     }
   };
 

@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
 
-const QRDisplay = ({ code, size = 'medium', showCode = true }) => {
+const QRDisplay = ({ code, link, size = 'medium', showCode = true }) => {
   const [copied, setCopied] = useState(false);
 
   const sizeClasses = {
@@ -16,8 +16,9 @@ const QRDisplay = ({ code, size = 'medium', showCode = true }) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Generate QR code URL (using a free QR API)
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${code}`;
+  // Generate QR code URL - use link if provided, otherwise just the code
+  const qrData = link || code;
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qrData)}`;
 
   return (
     <div className="flex flex-col items-center gap-3">

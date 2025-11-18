@@ -1,34 +1,40 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
 
-@layer base {
-  * {
-    @apply font-sans;
-  }
+@theme {
+  --font-sans: 'Poppins', 'Inter', 'Nunito', ui-sans-serif, system-ui, sans-serif;
 
-  body {
-    @apply m-0 p-0 overflow-x-hidden;
-    font-family: 'Poppins', 'Inter', 'Nunito', sans-serif;
-  }
+  --color-peach: #FFB7A8;
+  --color-cream: #FFF5E6;
+  --color-teal: #4FD1C5;
+  --color-coral: #FF6B6B;
+  --color-navy: #1A202C;
+  --color-purple: #805AD5;
 }
 
-@layer utilities {
-  .gradient-peach-cream {
-    background: linear-gradient(135deg, #FFB7A8 0%, #FFF5E6 100%);
-  }
+* {
+  font-family: var(--font-sans);
+}
 
-  .gradient-teal-coral {
-    background: linear-gradient(135deg, #4FD1C5 0%, #FF6B6B 100%);
-  }
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: var(--font-sans);
+}
 
-  .gradient-navy-purple {
-    background: linear-gradient(135deg, #1A202C 0%, #805AD5 100%);
-  }
+@utility gradient-peach-cream {
+  background: linear-gradient(135deg, #FFB7A8 0%, #FFF5E6 100%);
+}
 
-  .gradient-multi {
-    background: linear-gradient(135deg, #FFB7A8 0%, #FFF5E6 33%, #4FD1C5 66%, #FF6B6B 100%);
-  }
+@utility gradient-teal-coral {
+  background: linear-gradient(135deg, #4FD1C5 0%, #FF6B6B 100%);
+}
+
+@utility gradient-navy-purple {
+  background: linear-gradient(135deg, #1A202C 0%, #805AD5 100%);
+}
+
+@utility gradient-multi {
+  background: linear-gradient(135deg, #FFB7A8 0%, #FFF5E6 33%, #4FD1C5 66%, #FF6B6B 100%);
 }

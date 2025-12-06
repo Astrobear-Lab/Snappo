@@ -204,6 +204,7 @@ export const PhotographerProvider = ({ children }) => {
               status,
               file_url,
               watermarked_url,
+              is_sample,
               created_at
             )
           )
@@ -237,6 +238,7 @@ export const PhotographerProvider = ({ children }) => {
             id: photo.id,
             url: photo.watermarked_url,
             watermarked: true,
+            isSample: photo.is_sample || false,
             exif: null,
             file: null,
           })),

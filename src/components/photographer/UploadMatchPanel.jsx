@@ -4,6 +4,7 @@ import { usePhotographer } from '../../contexts/PhotographerContext';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import PhotoMetadataAccordion from './PhotoMetadataAccordion';
+import { blurImage } from '../../lib/imageUtils';
 
 const UploadMatchPanel = ({ preselectedCode = null }) => {
   const { user } = useAuth();
@@ -20,6 +21,7 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
   const [selectedPhotos, setSelectedPhotos] = useState([]);
   const [selectedCode, setSelectedCode] = useState(preselectedCode?.id || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
 
   const unmatchedUploads = uploads.filter((u) => !u.matched);
   const [uploading, setUploading] = useState(false);
@@ -82,24 +84,28 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
           throw originalError;
         }
 
-        // Upload watermarked version to public bucket (same file for now)
-        console.log('[UploadMatchPanel] Uploading to photos bucket...');
-        const { data: watermarkedData, error: watermarkedError } = await supabase.storage
+        // Create blurred version
+        console.log('[UploadMatchPanel] Creating blurred version...');
+        const blurredBlob = await blurImage(upload.file, 20);
+
+        // Upload blurred version to public bucket
+        console.log('[UploadMatchPanel] Uploading blurred version to photos bucket...');
+        const { data: blurredData, error: blurredError } = await supabase.storage
           .from('photos')
-          .upload(`${filePath}-watermarked.${fileExt}`, upload.file);
+          .upload(`${filePath}-blurred.${fileExt}`, blurredBlob);
 
-        console.log('[UploadMatchPanel] Watermarked upload result:', { watermarkedData, watermarkedError });
+        console.log('[UploadMatchPanel] Blurred upload result:', { blurredData, blurredError });
 
-        if (watermarkedError) {
-          console.error('[UploadMatchPanel] Watermarked upload failed:', watermarkedError);
-          throw watermarkedError;
+        if (blurredError) {
+          console.error('[UploadMatchPanel] Blurred upload failed:', blurredError);
+          throw blurredError;
         }
 
-        // Get public URL for watermarked version
-        console.log('[UploadMatchPanel] Getting public URL for watermarked photo...');
+        // Get public URL for blurred version
+        console.log('[UploadMatchPanel] Getting public URL for blurred photo...');
         const { data: publicUrlData } = supabase.storage
           .from('photos')
-          .getPublicUrl(`${filePath}-watermarked.${fileExt}`);
+          .getPublicUrl(`${filePath}-blurred.${fileExt}`);
 
         console.log('[UploadMatchPanel] Public URL:', publicUrlData.publicUrl);
 
@@ -111,10 +117,11 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
             {
               photographer_id: profile.id,
               file_url: originalData.path,
-              watermarked_url: publicUrlData.publicUrl,
+              watermarked_url: publicUrlData.publicUrl, // Stores blurred version URL
               title: upload.file.name,
               file_size: upload.file.size,
               status: 'pending', // Will be approved later
+              is_sample: samplePhotos[photoId] || false, // Use sample status from state
             },
           ])
           .select()
@@ -369,6 +376,28 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
                           </div>
                         </div>
                       )}
+
+                      {/* Sample checkbox */}
+                      <div
+                        className="absolute top-2 right-2 z-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <label className="flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full shadow-lg cursor-pointer hover:bg-white transition-colors">
+                          <input
+                            type="checkbox"
+                            checked={samplePhotos[upload.id] || false}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setSamplePhotos(prev => ({
+                                ...prev,
+                                [upload.id]: !prev[upload.id]
+                              }));
+                            }}
+                            className="w-4 h-4 text-teal rounded focus:ring-teal cursor-pointer"
+                          />
+                          <span className="text-xs font-semibold text-gray-700">Sample</span>
+                        </label>
+                      </div>
                     </motion.div>
 
                     {/* Auto-match suggestion */}

@@ -104,21 +104,41 @@ const PhotoView = () => {
         return;
       }
 
-      // Use the first photo as primary (for now)
-      // TODO: Support multiple photos in UI
-      const photo = codePhotosData[0].photos;
+      // Use all photos
+      const photos = codePhotosData.map(cp => cp.photos);
 
-      // 4. Get public URLs
-      const { data: watermarkedUrl } = supabase.storage
-        .from('photos')
-        .getPublicUrl(photo.watermarked_url);
+      // 4. Get public URLs and determine what to show
+      const photosWithUrls = photos.map(photo => {
+        // If it's a sample or already purchased, show original
+        const showOriginal = photo.is_sample || photoCodeData.is_purchased;
 
-      console.log('[PhotoView] Photo loaded successfully');
+        if (showOriginal) {
+          const { data: originalUrl } = supabase.storage
+            .from('photos-original')
+            .getPublicUrl(photo.file_url);
 
-      setPhotoData({
-        ...photo,
-        watermarked_public_url: watermarkedUrl.publicUrl,
+          return {
+            ...photo,
+            display_url: originalUrl.publicUrl,
+            is_showing_original: true,
+          };
+        } else {
+          // Show blurred version
+          const { data: blurredUrl } = supabase.storage
+            .from('photos')
+            .getPublicUrl(photo.watermarked_url);
+
+          return {
+            ...photo,
+            display_url: blurredUrl.publicUrl,
+            is_showing_original: false,
+          };
+        }
       });
+
+      console.log('[PhotoView] Photos loaded successfully:', photosWithUrls);
+
+      setPhotoData(photosWithUrls[0]); // Use first photo for now
 
       setLoading(false);
     } catch (err) {
@@ -154,10 +174,10 @@ const PhotoView = () => {
           .eq('id', photoData.id);
       }
 
-      // Download watermarked version
+      // Download blurred version (or original if it's a sample)
       const link = document.createElement('a');
-      link.href = photoData.watermarked_public_url;
-      link.download = `snappo-${code}-watermarked.jpg`;
+      link.href = photoData.display_url;
+      link.download = `snappo-${code}-${photoData.is_sample ? 'sample' : 'blurred'}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -334,16 +354,23 @@ const PhotoView = () => {
           >
             <div className="relative rounded-3xl overflow-hidden shadow-2xl">
               <img
-                src={photoData?.watermarked_public_url}
+                src={photoData?.display_url}
                 alt={photoData?.title || 'Your photo'}
                 className="w-full h-auto object-cover"
               />
-              {!codeData?.is_purchased && (
+              {!photoData?.is_showing_original && !codeData?.is_purchased && (
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-center pb-8">
                   <div className="bg-white/90 backdrop-blur-sm px-6 py-3 rounded-full">
                     <p className="text-gray-800 font-semibold text-lg">
-                      🔒 Watermark Version
+                      🔒 Blurred Preview
                     </p>
+                  </div>
+                </div>
+              )}
+              {photoData?.is_sample && !codeData?.is_purchased && (
+                <div className="absolute top-4 right-4">
+                  <div className="bg-teal text-white px-4 py-2 rounded-full font-semibold shadow-lg">
+                    ✨ Sample
                   </div>
                 </div>
               )}

@@ -3,6 +3,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { blurImage } from '../../lib/imageUtils';
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +27,7 @@ const TimelineMatchPanel = () => {
   const [photoCodeMap, setPhotoCodeMap] = useState({}); // { photoId: codeId }
   const [activeId, setActiveId] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
 
   const fileInputRef = useState(null);
 
@@ -36,6 +38,14 @@ const TimelineMatchPanel = () => {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Toggle sample status for a photo
+  const toggleSample = useCallback((photoId) => {
+    setSamplePhotos(prev => ({
+      ...prev,
+      [photoId]: !prev[photoId]
+    }));
+  }, []);
 
   // Auto-match photos to nearest code based on time
   const autoMatchPhotos = useCallback(() => {
@@ -198,23 +208,27 @@ const TimelineMatchPanel = () => {
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
         const filePath = `user-${user.id}/${fileName}`;
 
-        // Upload to storage
+        // Upload original to private storage
         const { data: originalData, error: originalError } = await supabase.storage
           .from('photos-original')
           .upload(`${filePath}.${fileExt}`, upload.file);
 
         if (originalError) throw originalError;
 
-        const { data: watermarkedData, error: watermarkedError } = await supabase.storage
+        // Create blurred version
+        const blurredBlob = await blurImage(upload.file, 20);
+
+        // Upload blurred version to public storage
+        const { data: blurredData, error: blurredError } = await supabase.storage
           .from('photos')
-          .upload(`${filePath}-watermarked.${fileExt}`, upload.file);
+          .upload(`${filePath}-blurred.${fileExt}`, blurredBlob);
 
-        if (watermarkedError) throw watermarkedError;
+        if (blurredError) throw blurredError;
 
-        // Get public URL
+        // Get public URL for blurred version
         const { data: publicUrlData } = supabase.storage
           .from('photos')
-          .getPublicUrl(`${filePath}-watermarked.${fileExt}`);
+          .getPublicUrl(`${filePath}-blurred.${fileExt}`);
 
         // Create photo record
         const { data: photoData, error: photoError } = await supabase
@@ -223,10 +237,11 @@ const TimelineMatchPanel = () => {
             {
               photographer_id: profile.id,
               file_url: originalData.path,
-              watermarked_url: publicUrlData.publicUrl,
+              watermarked_url: publicUrlData.publicUrl, // Stores blurred version URL
               title: upload.file.name,
               file_size: upload.file.size,
               status: 'approved',
+              is_sample: samplePhotos[photoId] || false, // Use sample status from state
             },
           ])
           .select()
@@ -414,7 +429,7 @@ const TimelineMatchPanel = () => {
 };
 
 // Draggable Photo Component
-const DraggablePhoto = ({ photo }) => {
+const DraggablePhoto = ({ photo, isSample, onSampleToggle }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: photo.id,
   });
@@ -430,17 +445,37 @@ const DraggablePhoto = ({ photo }) => {
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
-      className={`aspect-square rounded-lg overflow-hidden bg-gray-200 ${
+      className={`relative aspect-square rounded-lg overflow-hidden bg-gray-200 ${
         isDragging ? 'opacity-50' : 'hover:ring-2 hover:ring-teal'
       } transition-all`}
     >
-      <img
-        src={photo.url}
-        alt="Photo"
-        className="w-full h-full object-cover"
-      />
+      <div {...listeners} {...attributes} className="w-full h-full">
+        <img
+          src={photo.url}
+          alt="Photo"
+          className="w-full h-full object-cover"
+        />
+      </div>
+
+      {/* Sample checkbox overlay */}
+      <div
+        className="absolute top-2 right-2 z-10"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSampleToggle(photo.id);
+        }}
+      >
+        <label className="flex items-center gap-1 bg-white/90 backdrop-blur-sm px-2 py-1 rounded-full shadow-lg cursor-pointer hover:bg-white transition-colors">
+          <input
+            type="checkbox"
+            checked={isSample}
+            onChange={() => onSampleToggle(photo.id)}
+            className="w-4 h-4 text-teal rounded focus:ring-teal cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <span className="text-xs font-semibold text-gray-700">Sample</span>
+        </label>
+      </div>
     </div>
   );
 };
@@ -503,7 +538,12 @@ const TimelineItem = ({ item, formatTime }) => {
           {item.photos.length > 0 ? (
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
               {item.photos.map(photo => (
-                <DraggablePhoto key={photo.id} photo={photo} />
+                <DraggablePhoto
+                  key={photo.id}
+                  photo={photo}
+                  isSample={samplePhotos[photo.id] || false}
+                  onSampleToggle={toggleSample}
+                />
               ))}
             </div>
           ) : (
@@ -537,7 +577,12 @@ const TimelineItem = ({ item, formatTime }) => {
         {item.photos.length > 0 ? (
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
             {item.photos.map(photo => (
-              <DraggablePhoto key={photo.id} photo={photo} />
+              <DraggablePhoto
+                key={photo.id}
+                photo={photo}
+                isSample={samplePhotos[photo.id] || false}
+                onSampleToggle={toggleSample}
+              />
             ))}
           </div>
         ) : (

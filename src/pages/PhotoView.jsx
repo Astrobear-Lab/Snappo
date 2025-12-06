@@ -12,6 +12,7 @@ const PhotoView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [photoData, setPhotoData] = useState(null);
+  const [allPhotos, setAllPhotos] = useState([]);
   const [codeData, setCodeData] = useState(null);
   const [purchasing, setPurchasing] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -138,7 +139,9 @@ const PhotoView = () => {
 
       console.log('[PhotoView] Photos loaded successfully:', photosWithUrls);
 
-      setPhotoData(photosWithUrls[0]); // Use first photo for now
+      const samplePhoto = photosWithUrls.find(photo => photo.is_sample);
+      setPhotoData(samplePhoto || photosWithUrls[0]);
+      setAllPhotos(photosWithUrls);
 
       setLoading(false);
     } catch (err) {
@@ -149,11 +152,14 @@ const PhotoView = () => {
   };
 
   const handleFreeDownload = async () => {
-    if (!photoData || !codeData) return;
+    if ((!photoData && allPhotos.length === 0) || !codeData) return;
 
     setDownloading(true);
 
     try {
+      const samplePhoto = allPhotos.find(photo => photo.is_sample) || photoData;
+      if (!samplePhoto) throw new Error('No sample photo found for download');
+
       // Update redemption status
       if (!codeData.is_redeemed) {
         await supabase
@@ -169,15 +175,15 @@ const PhotoView = () => {
         await supabase
           .from('photos')
           .update({
-            views_count: (photoData.views_count || 0) + 1,
+            views_count: (samplePhoto.views_count || 0) + 1,
           })
-          .eq('id', photoData.id);
+          .eq('id', samplePhoto.id);
       }
 
-      // Download blurred version (or original if it's a sample)
+      // Download the dedicated sample image (or fallback to preview)
       const link = document.createElement('a');
-      link.href = photoData.display_url;
-      link.download = `snappo-${code}-${photoData.is_sample ? 'sample' : 'blurred'}.jpg`;
+      link.href = samplePhoto.display_url;
+      link.download = `snappo-${code}-sample.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -191,6 +197,8 @@ const PhotoView = () => {
       setDownloading(false);
     }
   };
+
+  const lockedPhotos = allPhotos.filter(photo => !photo.is_sample);
 
   const handlePurchase = async () => {
     if (!photoData || !codeData) return;
@@ -529,6 +537,59 @@ const PhotoView = () => {
             )}
           </motion.div>
         </div>
+
+        {!codeData?.is_purchased && lockedPhotos.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="mt-12"
+          >
+            <div className="bg-white rounded-3xl p-8 shadow-2xl">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-6">
+                <div>
+                  <p className="text-sm font-semibold text-teal uppercase tracking-[0.2em]">
+                    Locked Moments
+                  </p>
+                  <h2 className="text-3xl font-bold text-navy mt-2">
+                    Unlock the rest of your gallery
+                  </h2>
+                  <p className="text-gray-600 mt-2">
+                    Preview the rest of your collection and unlock them all with one purchase.
+                  </p>
+                </div>
+                <motion.button
+                  onClick={handlePurchase}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="px-8 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-2xl shadow-lg"
+                >
+                  🔓 Unlock All Photos
+                </motion.button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {lockedPhotos.map((photo, index) => (
+                  <div
+                    key={photo.id || `locked-${index}`}
+                    className="relative rounded-2xl overflow-hidden shadow-lg group"
+                  >
+                    <img
+                      src={photo.display_url}
+                      alt={photo.title || `Locked photo ${index + 1}`}
+                      className="w-full h-48 object-cover grayscale"
+                    />
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white gap-2">
+                      <span className="text-3xl">🔒</span>
+                      <p className="font-semibold">Locked Preview</p>
+                      <p className="text-sm text-white/80">Purchase to reveal</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

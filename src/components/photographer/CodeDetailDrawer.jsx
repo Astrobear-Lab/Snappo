@@ -6,7 +6,7 @@ import PhotoMetadataAccordion from './PhotoMetadataAccordion';
 import { supabase } from '../../lib/supabase';
 
 const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
-  const { extendCode, invalidateCode, fetchCodes } = usePhotographer();
+  const { extendCode, invalidateCode, fetchCodes, deleteCode } = usePhotographer();
 
   if (!code) return null;
 
@@ -108,6 +108,20 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
       });
     } else {
       navigator.clipboard.writeText(shareUrl);
+    }
+  };
+
+  const handleDeleteCode = async () => {
+    if (!window.confirm('Are you sure you want to delete this code? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteCode(code.id);
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete code:', error);
+      alert('Failed to delete code. Please try again.');
     }
   };
 
@@ -371,6 +385,15 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   className="w-full py-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition-colors"
                 >
                   Mark as Invalid
+                </motion.button>
+
+                <motion.button
+                  onClick={handleDeleteCode}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors"
+                >
+                  🗑 Delete Code
                 </motion.button>
               </div>
             </div>

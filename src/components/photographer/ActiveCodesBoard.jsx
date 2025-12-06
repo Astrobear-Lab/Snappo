@@ -4,7 +4,7 @@ import { usePhotographer } from '../../contexts/PhotographerContext';
 import CodeCard from './CodeCard';
 
 const ActiveCodesBoard = ({ onCodeClick, onUploadClick }) => {
-  const { getCodesByStatus } = usePhotographer();
+  const { getCodesByStatus, loadingCodes } = usePhotographer();
   const [activeTab, setActiveTab] = useState('pending_upload');
 
   const tabs = [
@@ -101,7 +101,17 @@ const ActiveCodesBoard = ({ onCodeClick, onUploadClick }) => {
           exit={{ opacity: 0, y: -20 }}
           transition={{ duration: 0.2 }}
         >
-          {currentCodes.length === 0 ? (
+          {loadingCodes ? (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">⏳</div>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                Loading codes...
+              </h3>
+              <p className="text-gray-600">
+                Fetching your codes from the database
+              </p>
+            </div>
+          ) : currentCodes.length === 0 ? (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">📭</div>
               <h3 className="text-xl font-bold text-gray-800 mb-2">

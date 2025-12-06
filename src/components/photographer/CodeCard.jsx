@@ -2,9 +2,19 @@ import { motion } from 'framer-motion';
 import { useState } from 'react';
 import StatusPill from './StatusPill';
 import QRDisplay from './QRDisplay';
+import { supabase } from '../../lib/supabase';
 
 const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
   const [showQR, setShowQR] = useState(false);
+
+  // Helper to get photo URL (handles both paths and full URLs)
+  const getPhotoUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url; // Already a full URL
+    // Convert path to public URL
+    const { data } = supabase.storage.from('photos').getPublicUrl(url);
+    return data.publicUrl;
+  };
 
   const formatTimeAgo = (date) => {
     const seconds = Math.floor((new Date() - date) / 1000);
@@ -116,7 +126,7 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
               className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gray-100"
             >
               <img
-                src={photo.url}
+                src={getPhotoUrl(photo.url)}
                 alt="Photo"
                 className="w-full h-full object-cover"
               />

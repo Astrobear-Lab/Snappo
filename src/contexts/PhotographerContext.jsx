@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import * as exifr from 'exifr';
+import { supabase } from '../lib/supabase';
+import { useAuth } from './AuthContext';
 
 const PhotographerContext = createContext({});
 
@@ -154,18 +156,130 @@ const generateMockCodes = () => [
 ];
 
 export const PhotographerProvider = ({ children }) => {
-  const [codes, setCodes] = useState(generateMockCodes());
+  const { user } = useAuth();
+  const [codes, setCodes] = useState([]);
   const [uploads, setUploads] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [loadingCodes, setLoadingCodes] = useState(false);
 
-  // Generate a new code
+  // Fetch codes from Supabase
+  const fetchCodes = useCallback(async () => {
+    console.log('[PhotographerContext] fetchCodes called, user:', user?.id);
+    if (!user) {
+      console.log('[PhotographerContext] No user, skipping fetchCodes');
+      return;
+    }
+
+    setLoadingCodes(true);
+    try {
+      // Get photographer profile first
+      console.log('[PhotographerContext] Fetching photographer profile...');
+      const { data: profile, error: profileError } = await supabase
+        .from('photographer_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      console.log('[PhotographerContext] Photographer profile result:', { profile, profileError });
+
+      if (profileError || !profile) {
+        console.log('[PhotographerContext] No photographer profile found, clearing codes');
+        setCodes([]);
+        return;
+      }
+
+      console.log('[PhotographerContext] Photographer profile found, fetching codes...');
+
+      // Fetch codes and related photos through code_photos
+      console.log('[PhotographerContext] Querying photo_codes with relationships...');
+      const { data: codesData, error: codesError } = await supabase
+        .from('photo_codes')
+        .select(`
+          *,
+          code_photos (
+            photos (
+              id,
+              title,
+              description,
+              status,
+              file_url,
+              watermarked_url,
+              created_at
+            )
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      console.log('[PhotographerContext] Codes query result:', { codesData, codesError });
+
+      if (codesError) {
+        console.error('[PhotographerContext] Codes query failed:', codesError);
+        throw codesError;
+      }
+
+      // Transform data to match the expected format
+      console.log('[PhotographerContext] Transforming codes data...');
+      const transformedCodes = codesData.map(code => {
+        const photos = code.code_photos?.map(cp => cp.photos).filter(Boolean) || [];
+        console.log(`[PhotographerContext] Code ${code.code}: found ${photos.length} photos`);
+        return {
+          id: code.id,
+          code: code.code,
+          status: photos.length > 0 ? 'published' : 'pending_upload',
+          createdAt: new Date(code.created_at),
+          sharedAt: code.shared_at ? new Date(code.shared_at) : null,
+          uploadedAt: code.uploaded_at ? new Date(code.uploaded_at) : null,
+          publishedAt: code.published_at ? new Date(code.published_at) : null,
+          expiresAt: new Date(code.expires_at),
+          tags: [], // Could be stored separately if needed
+          note: '', // Could be stored separately if needed
+          photos: photos.map(photo => ({
+            id: photo.id,
+            url: photo.watermarked_url,
+            watermarked: true,
+            exif: null,
+            file: null,
+          })),
+          views: 0, // Would need to be tracked separately
+          unlocks: code.is_redeemed ? 1 : 0,
+          unlockedAt: code.redeemed_at ? new Date(code.redeemed_at) : null,
+        };
+      });
+
+      console.log('[PhotographerContext] Final transformed codes:', transformedCodes);
+      setCodes(transformedCodes);
+    } catch (error) {
+      console.error('[PhotographerContext] Failed to fetch codes:', error);
+      console.error('[PhotographerContext] Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      setCodes([]);
+    } finally {
+      console.log('[PhotographerContext] fetchCodes completed');
+      setLoadingCodes(false);
+    }
+  }, [user]);
+
+  // Load codes when user changes
+  useEffect(() => {
+    fetchCodes();
+  }, [fetchCodes]);
+
+  // Generate a new code (now handled by GenerateCodeModal, just refresh data)
   const createCode = useCallback((metadata = {}) => {
-    const newCode = {
+    // Codes are now created in GenerateCodeModal and stored in Supabase
+    // Just refresh the data
+    fetchCodes();
+
+    // Return a placeholder for compatibility
+    const placeholderCode = {
       id: Date.now().toString(),
-      code: generateMockCode(),
+      code: 'GENERATING...',
       status: 'pending_upload',
       createdAt: new Date(),
-      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000), // 72 hours
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
       tags: metadata.tags || [],
       note: metadata.note || '',
       photos: [],
@@ -173,14 +287,8 @@ export const PhotographerProvider = ({ children }) => {
       unlocks: 0,
     };
 
-    setCodes((prev) => [newCode, ...prev]);
-    addNotification({
-      type: 'success',
-      message: `Code ${newCode.code} created successfully`,
-    });
-
-    return newCode;
-  }, []);
+    return placeholderCode;
+  }, [fetchCodes]);
 
   // Upload photos
   const uploadPhotos = useCallback(async (files) => {
@@ -353,6 +461,7 @@ export const PhotographerProvider = ({ children }) => {
     codes,
     uploads,
     notifications,
+    loadingCodes,
     createCode,
     uploadPhotos,
     matchPhotosToCode,
@@ -362,6 +471,7 @@ export const PhotographerProvider = ({ children }) => {
     getCodesByStatus,
     extendCode,
     invalidateCode,
+    fetchCodes,
   };
 
   return (

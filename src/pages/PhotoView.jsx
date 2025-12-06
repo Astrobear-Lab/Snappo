@@ -73,34 +73,40 @@ const PhotoView = () => {
       setCodeData(photoCodeData);
       console.log('[PhotoView] Code data loaded:', photoCodeData);
 
-      // 3. Get photo details
-      const { data: photo, error: photoError } = await supabase
-        .from('photos')
+      // 3. Get linked photos through code_photos table
+      const { data: codePhotosData, error: codePhotosError } = await supabase
+        .from('code_photos')
         .select(`
-          *,
-          photographer:photographer_profiles(
-            id,
-            user_id,
-            profile:profiles(full_name, avatar_url)
+          photo_id,
+          photos (
+            *,
+            photographer:photographer_profiles(
+              id,
+              user_id,
+              profile:profiles(full_name, avatar_url)
+            )
           )
         `)
-        .eq('id', photoCodeData.photo_id)
-        .single();
+        .eq('code_id', photoCodeData.id);
 
-      console.log('[PhotoView] Photo lookup result:', { photo, photoError });
+      console.log('[PhotoView] Code photos lookup result:', { codePhotosData, codePhotosError });
 
-      if (photoError) {
-        console.error('[PhotoView] Photo fetch error:', photoError);
-        setError(`Photo error: ${photoError.message || 'Photo not found'}`);
+      if (codePhotosError) {
+        console.error('[PhotoView] Code photos fetch error:', codePhotosError);
+        setError(`Database error: ${codePhotosError.message || 'Photos not found'}`);
         setLoading(false);
         return;
       }
 
-      if (!photo) {
-        setError('Photo not found.');
+      if (!codePhotosData || codePhotosData.length === 0) {
+        setError('No photos found for this code.');
         setLoading(false);
         return;
       }
+
+      // Use the first photo as primary (for now)
+      // TODO: Support multiple photos in UI
+      const photo = codePhotosData[0].photos;
 
       // 4. Get public URLs
       const { data: watermarkedUrl } = supabase.storage

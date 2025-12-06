@@ -1,10 +1,11 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
+import { supabase } from '../../lib/supabase';
 import QRDisplay from './QRDisplay';
 
 const GenerateCodeModal = ({ isOpen, onClose }) => {
-  const { createCode } = usePhotographer();
+  const { createCode, fetchCodes } = usePhotographer();
   const [step, setStep] = useState(1); // 1: form, 2: success
   const [generatedCode, setGeneratedCode] = useState(null);
   const [formData, setFormData] = useState({
@@ -12,19 +13,58 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
     tags: '',
   });
 
-  const handleGenerate = () => {
-    const tags = formData.tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
+  const handleGenerate = async () => {
+    try {
+      const tags = formData.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
 
-    const code = createCode({
-      note: formData.note,
-      tags,
-    });
+      // Generate actual code using Supabase RPC
+      const { data: codeData, error: codeError } = await supabase.rpc(
+        'generate_photo_code'
+      );
 
-    setGeneratedCode(code);
-    setStep(2);
+      if (codeError) throw codeError;
+
+      // Create photo code record (without photo_id for now)
+      const { data: photoCodeData, error: photoCodeError } = await supabase
+        .from('photo_codes')
+        .insert([
+          {
+            code: codeData,
+            expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(), // 72 hours
+            shared_at: new Date().toISOString(), // Set shared_at immediately as code is shareable
+          },
+        ])
+        .select()
+        .single();
+
+      if (photoCodeError) throw photoCodeError;
+
+      // Refresh codes from database
+      await fetchCodes();
+
+      // Create code object for UI
+      const code = {
+        id: photoCodeData.id,
+        code: codeData,
+        status: 'pending_upload',
+        createdAt: new Date(photoCodeData.created_at),
+        expiresAt: new Date(photoCodeData.expires_at),
+        tags,
+        note: formData.note,
+        photos: [],
+        views: 0,
+        unlocks: 0,
+      };
+
+      setGeneratedCode(code);
+      setStep(2);
+    } catch (error) {
+      console.error('Failed to generate code:', error);
+      alert('Failed to generate code. Please try again.');
+    }
   };
 
   const handleClose = () => {
@@ -171,7 +211,11 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
 
                     {/* QR Display */}
                     <div className="mb-6">
-                      <QRDisplay code={generatedCode.code} size="large" />
+                      <QRDisplay
+                        code={generatedCode.code}
+                        link={`${window.location.origin}/photo/${generatedCode.code}`}
+                        size="large"
+                      />
                     </div>
 
                     {/* Code Details */}

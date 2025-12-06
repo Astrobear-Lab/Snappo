@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Enable RLS (Row Level Security)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
+
 -- Policies for profiles
 CREATE POLICY "Public profiles are viewable by everyone"
   ON public.profiles FOR SELECT
@@ -67,6 +72,11 @@ CREATE TABLE IF NOT EXISTS public.photographer_profiles (
 -- Enable RLS
 ALTER TABLE public.photographer_profiles ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Photographer profiles are viewable by everyone" ON public.photographer_profiles;
+DROP POLICY IF EXISTS "Users can insert own photographer profile" ON public.photographer_profiles;
+DROP POLICY IF EXISTS "Users can update own photographer profile" ON public.photographer_profiles;
+
 -- Policies
 CREATE POLICY "Photographer profiles are viewable by everyone"
   ON public.photographer_profiles FOR SELECT
@@ -114,6 +124,11 @@ CREATE TABLE IF NOT EXISTS public.photos (
 -- Enable RLS
 ALTER TABLE public.photos ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Photos are viewable by everyone" ON public.photos;
+DROP POLICY IF EXISTS "Photographers can insert own photos" ON public.photos;
+DROP POLICY IF EXISTS "Photographers can view own photos" ON public.photos;
+
 -- Policies
 CREATE POLICY "Photos are viewable by everyone"
   ON public.photos FOR SELECT
@@ -142,7 +157,6 @@ CREATE POLICY "Photographers can view own photos"
 -- =====================================================
 CREATE TABLE IF NOT EXISTS public.photo_codes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  photo_id UUID REFERENCES public.photos(id) ON DELETE CASCADE,
   code TEXT UNIQUE NOT NULL,
 
   -- Redemption
@@ -155,14 +169,37 @@ CREATE TABLE IF NOT EXISTS public.photo_codes (
   purchased_by UUID REFERENCES public.profiles(id),
   purchased_at TIMESTAMP WITH TIME ZONE,
 
+  -- Timeline timestamps
+  shared_at TIMESTAMP WITH TIME ZONE,
+  uploaded_at TIMESTAMP WITH TIME ZONE,
+  published_at TIMESTAMP WITH TIME ZONE,
+
   expires_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- =====================================================
+-- 4.1. Code Photos Table (Many-to-Many relationship)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.code_photos (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code_id UUID REFERENCES public.photo_codes(id) ON DELETE CASCADE,
+  photo_id UUID REFERENCES public.photos(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  UNIQUE(code_id, photo_id) -- 하나의 코드에 같은 사진 중복 방지
+);
+
 -- Enable RLS
 ALTER TABLE public.photo_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.code_photos ENABLE ROW LEVEL SECURITY;
 
--- Policies
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Anyone can view unredeemed codes" ON public.photo_codes;
+DROP POLICY IF EXISTS "Code owner can view redeemed code" ON public.photo_codes;
+DROP POLICY IF EXISTS "Photographers can create codes" ON public.photo_codes;
+
+-- Policies for photo_codes
 CREATE POLICY "Anyone can view unredeemed codes"
   ON public.photo_codes FOR SELECT
   USING (NOT is_redeemed);
@@ -170,6 +207,54 @@ CREATE POLICY "Anyone can view unredeemed codes"
 CREATE POLICY "Code owner can view redeemed code"
   ON public.photo_codes FOR SELECT
   USING (auth.uid() = redeemed_by OR auth.uid() = purchased_by);
+
+CREATE POLICY "Photographers can create codes"
+  ON public.photo_codes FOR INSERT
+  WITH CHECK (
+    auth.role() = 'authenticated' AND
+    EXISTS (
+      SELECT 1 FROM public.photographer_profiles
+      WHERE user_id = auth.uid()
+      AND status IN ('pending', 'active')
+    )
+  );
+
+-- Drop existing policies for code_photos
+DROP POLICY IF EXISTS "Anyone can view photos from unredeemed codes" ON public.code_photos;
+DROP POLICY IF EXISTS "Code owner can view photos from redeemed codes" ON public.code_photos;
+DROP POLICY IF EXISTS "Photographers can manage their code photos" ON public.code_photos;
+
+-- Policies for code_photos
+CREATE POLICY "Anyone can view photos from unredeemed codes"
+  ON public.code_photos FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.photo_codes pc
+      WHERE pc.id = code_photos.code_id
+      AND NOT pc.is_redeemed
+    )
+  );
+
+CREATE POLICY "Code owner can view photos from redeemed codes"
+  ON public.code_photos FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.photo_codes pc
+      WHERE pc.id = code_photos.code_id
+      AND (pc.redeemed_by = auth.uid() OR pc.purchased_by = auth.uid())
+    )
+  );
+
+CREATE POLICY "Photographers can manage their code photos"
+  ON public.code_photos FOR ALL
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.photo_codes pc
+      JOIN public.photos p ON pc.id = code_photos.code_id
+      JOIN public.photographer_profiles pp ON p.photographer_id = pp.id
+      WHERE pp.user_id = auth.uid()
+    )
+  );
 
 -- =====================================================
 -- 5. Transactions Table
@@ -195,6 +280,9 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 -- Enable RLS
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view own transactions" ON public.transactions;
+
 -- Policies
 CREATE POLICY "Users can view own transactions"
   ON public.transactions FOR SELECT
@@ -218,6 +306,11 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Drop existing triggers if they exist
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+DROP TRIGGER IF EXISTS update_photographer_profiles_updated_at ON public.photographer_profiles;
+DROP TRIGGER IF EXISTS update_photos_updated_at ON public.photos;
 
 -- Triggers for updated_at
 CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles
@@ -284,6 +377,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Drop existing trigger if it exists
+DROP TRIGGER IF EXISTS photo_auto_verification ON public.photos;
+
 -- Trigger for auto-verification
 CREATE TRIGGER photo_auto_verification AFTER UPDATE ON public.photos
   FOR EACH ROW
@@ -308,10 +404,18 @@ $$ LANGUAGE plpgsql;
 -- =====================================================
 -- Indexes for Performance
 -- =====================================================
+DROP INDEX IF EXISTS idx_photos_photographer_id;
+DROP INDEX IF EXISTS idx_photos_status;
+DROP INDEX IF EXISTS idx_photo_codes_code;
+DROP INDEX IF EXISTS idx_photo_codes_photo_id;
+DROP INDEX IF EXISTS idx_photographer_profiles_user_id;
+DROP INDEX IF EXISTS idx_photographer_profiles_status;
+
 CREATE INDEX IF NOT EXISTS idx_photos_photographer_id ON public.photos(photographer_id);
 CREATE INDEX IF NOT EXISTS idx_photos_status ON public.photos(status);
 CREATE INDEX IF NOT EXISTS idx_photo_codes_code ON public.photo_codes(code);
-CREATE INDEX IF NOT EXISTS idx_photo_codes_photo_id ON public.photo_codes(photo_id);
+CREATE INDEX IF NOT EXISTS idx_code_photos_code_id ON public.code_photos(code_id);
+CREATE INDEX IF NOT EXISTS idx_code_photos_photo_id ON public.code_photos(photo_id);
 CREATE INDEX IF NOT EXISTS idx_photographer_profiles_user_id ON public.photographer_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_photographer_profiles_status ON public.photographer_profiles(status);
 
@@ -333,7 +437,69 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Drop existing trigger if it exists
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
 -- Trigger for new user registration
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- =====================================================
+-- Storage Buckets Configuration
+-- =====================================================
+
+-- Create storage buckets for photos
+INSERT INTO storage.buckets (id, name, public)
+VALUES
+  ('photos', 'photos', true),
+  ('photos-original', 'photos-original', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- =====================================================
+-- Storage Policies (Must be created via Dashboard or separate migration)
+-- =====================================================
+-- NOTE: Storage policies cannot be created via SQL Editor due to permission restrictions.
+-- Please create these policies manually in Supabase Dashboard → Storage → [bucket] → Policies
+--
+-- For 'photos' bucket:
+--
+-- 1. SELECT (Anyone can view):
+--    bucket_id = 'photos'
+--
+-- 2. INSERT (Users upload to own folder):
+--    bucket_id = 'photos'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+--
+-- 3. UPDATE (Users update own files):
+--    bucket_id = 'photos'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+--
+-- 4. DELETE (Users delete own files):
+--    bucket_id = 'photos'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+--
+-- For 'photos-original' bucket:
+--
+-- 1. SELECT (Users view own files):
+--    bucket_id = 'photos-original'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+--
+-- 2. INSERT (Users upload to own folder):
+--    bucket_id = 'photos-original'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+--
+-- 3. UPDATE (Users update own files):
+--    bucket_id = 'photos-original'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+--
+-- 4. DELETE (Users delete own files):
+--    bucket_id = 'photos-original'
+--    AND auth.role() = 'authenticated'
+--    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)

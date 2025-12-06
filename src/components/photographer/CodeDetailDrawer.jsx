@@ -3,11 +3,21 @@ import { usePhotographer } from '../../contexts/PhotographerContext';
 import QRDisplay from './QRDisplay';
 import StatusPill from './StatusPill';
 import PhotoMetadataAccordion from './PhotoMetadataAccordion';
+import { supabase } from '../../lib/supabase';
 
 const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const { extendCode, invalidateCode } = usePhotographer();
 
   if (!code) return null;
+
+  // Helper to get photo URL (handles both paths and full URLs)
+  const getPhotoUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http')) return url; // Already a full URL
+    // Convert path to public URL
+    const { data } = supabase.storage.from('photos').getPublicUrl(url);
+    return data.publicUrl;
+  };
 
   const timeline = [
     {
@@ -18,21 +28,21 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
     },
     {
       label: 'Shared',
-      time: code.createdAt,
+      time: code.sharedAt,
       icon: '📤',
-      active: true,
+      active: !!code.sharedAt,
     },
     {
       label: 'Uploaded',
-      time: code.photos.length > 0 ? code.createdAt : null,
+      time: code.uploadedAt,
       icon: '📸',
-      active: code.photos.length > 0,
+      active: !!code.uploadedAt,
     },
     {
       label: 'Published',
-      time: code.status === 'published' || code.status === 'unlocked' ? code.createdAt : null,
+      time: code.publishedAt,
       icon: '✓',
-      active: code.status === 'published' || code.status === 'unlocked',
+      active: !!code.publishedAt,
     },
     {
       label: 'Viewed',
@@ -157,7 +167,11 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                 <h3 className="text-lg font-bold text-gray-800 mb-4 text-center">
                   Share this code
                 </h3>
-                <QRDisplay code={code.code} size="large" />
+                <QRDisplay
+                  code={code.code}
+                  link={`${window.location.origin}/photo/${code.code}`}
+                  size="large"
+                />
 
                 <div className="mt-4 p-3 bg-white rounded-xl">
                   <div className="text-xs text-gray-500 mb-1">Share Link</div>
@@ -231,7 +245,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                       <div key={photo.id} className="flex flex-col">
                         <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group">
                           <img
-                            src={photo.url}
+                            src={getPhotoUrl(photo.url)}
                             alt="Photo"
                             className="w-full h-full object-cover"
                           />

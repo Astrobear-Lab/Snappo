@@ -4,7 +4,7 @@ import { usePhotographer } from '../../contexts/PhotographerContext';
 import { useAuth } from '../../contexts/AuthContext';
 import GenerateCodeModal from './GenerateCodeModal';
 import ActiveCodesBoard from './ActiveCodesBoard';
-import UploadMatchPanel from './UploadMatchPanel';
+import TimelineMatchPanel from './TimelineMatchPanel';
 import CodeDetailDrawer from './CodeDetailDrawer';
 import ToastNotification from './ToastNotification';
 
@@ -245,7 +245,7 @@ const PhotographerDashboardMain = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
               >
-                <UploadMatchPanel preselectedCode={selectedCode} />
+                <TimelineMatchPanel />
               </motion.div>
             )}
 

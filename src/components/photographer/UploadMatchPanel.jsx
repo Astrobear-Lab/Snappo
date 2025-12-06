@@ -1,15 +1,19 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import PhotoMetadataAccordion from './PhotoMetadataAccordion';
 
 const UploadMatchPanel = ({ preselectedCode = null }) => {
+  const { user } = useAuth();
   const {
     uploads,
     codes,
     uploadPhotos,
     matchPhotosToCode,
     getAutoMatchSuggestions,
+    fetchCodes,
   } = usePhotographer();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -18,6 +22,187 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
 
   const unmatchedUploads = uploads.filter((u) => !u.matched);
+  const [uploading, setUploading] = useState(false);
+
+  // Handle actual upload to Supabase and match to code
+  const handleUploadAndMatch = useCallback(async () => {
+    console.log('[UploadMatchPanel] handleUploadAndMatch called');
+    console.log('[UploadMatchPanel] selectedPhotos:', selectedPhotos);
+    console.log('[UploadMatchPanel] selectedCode:', selectedCode);
+    console.log('[UploadMatchPanel] user:', user);
+
+    if (selectedPhotos.length === 0 || !selectedCode) {
+      console.log('[UploadMatchPanel] Validation failed: no photos or code selected');
+      alert('Please select photos and a code');
+      return;
+    }
+
+    console.log('[UploadMatchPanel] Starting upload process...');
+    setUploading(true);
+    try {
+      // Get photographer profile
+      console.log('[UploadMatchPanel] Fetching photographer profile for user:', user?.id);
+      const { data: profile, error: profileError } = await supabase
+        .from('photographer_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      console.log('[UploadMatchPanel] Photographer profile result:', { profile, profileError });
+
+      if (profileError || !profile) {
+        console.error('[UploadMatchPanel] Photographer profile error:', profileError);
+        throw new Error('Photographer profile not found');
+      }
+
+      console.log('[UploadMatchPanel] Photographer profile found:', profile);
+
+      // Upload each selected photo
+      const uploadPromises = selectedPhotos.map(async (photoId) => {
+        const upload = uploads.find(u => u.id === photoId);
+        if (!upload) return null;
+
+        const fileExt = upload.file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        const filePath = `user-${user.id}/${fileName}`;
+
+        console.log(`[UploadMatchPanel] Processing photo: ${upload.file.name}`);
+        console.log(`[UploadMatchPanel] File path: ${filePath}.${fileExt}`);
+
+        // Upload original photo to private bucket
+        console.log('[UploadMatchPanel] Uploading to photos-original bucket...');
+        const { data: originalData, error: originalError } = await supabase.storage
+          .from('photos-original')
+          .upload(`${filePath}.${fileExt}`, upload.file);
+
+        console.log('[UploadMatchPanel] Original upload result:', { originalData, originalError });
+
+        if (originalError) {
+          console.error('[UploadMatchPanel] Original upload failed:', originalError);
+          throw originalError;
+        }
+
+        // Upload watermarked version to public bucket (same file for now)
+        console.log('[UploadMatchPanel] Uploading to photos bucket...');
+        const { data: watermarkedData, error: watermarkedError } = await supabase.storage
+          .from('photos')
+          .upload(`${filePath}-watermarked.${fileExt}`, upload.file);
+
+        console.log('[UploadMatchPanel] Watermarked upload result:', { watermarkedData, watermarkedError });
+
+        if (watermarkedError) {
+          console.error('[UploadMatchPanel] Watermarked upload failed:', watermarkedError);
+          throw watermarkedError;
+        }
+
+        // Get public URL for watermarked version
+        console.log('[UploadMatchPanel] Getting public URL for watermarked photo...');
+        const { data: publicUrlData } = supabase.storage
+          .from('photos')
+          .getPublicUrl(`${filePath}-watermarked.${fileExt}`);
+
+        console.log('[UploadMatchPanel] Public URL:', publicUrlData.publicUrl);
+
+        // Create photo record
+        console.log('[UploadMatchPanel] Creating photo record in database...');
+        const { data: photoData, error: photoError } = await supabase
+          .from('photos')
+          .insert([
+            {
+              photographer_id: profile.id,
+              file_url: originalData.path,
+              watermarked_url: publicUrlData.publicUrl,
+              title: upload.file.name,
+              file_size: upload.file.size,
+              status: 'pending', // Will be approved later
+            },
+          ])
+          .select()
+          .single();
+
+        console.log('[UploadMatchPanel] Photo record creation result:', { photoData, photoError });
+
+        if (photoError) {
+          console.error('[UploadMatchPanel] Photo record creation failed:', photoError);
+          throw photoError;
+        }
+
+        // Check if this is the first photo for this code
+        const { data: existingPhotos } = await supabase
+          .from('code_photos')
+          .select('id')
+          .eq('code_id', selectedCode)
+          .limit(1);
+
+        const isFirstPhoto = !existingPhotos || existingPhotos.length === 0;
+
+        // Link photo to selected code
+        console.log(`[UploadMatchPanel] Linking photo ${photoData.id} to code ${selectedCode}...`);
+        const { error: linkError } = await supabase
+          .from('code_photos')
+          .insert([
+            {
+              code_id: selectedCode,
+              photo_id: photoData.id,
+            },
+          ]);
+
+        console.log('[UploadMatchPanel] Code linking result:', { linkError });
+
+        if (linkError) {
+          console.error('[UploadMatchPanel] Code linking failed:', linkError);
+          throw linkError;
+        }
+
+        // Set uploaded_at and published_at timestamps if this is the first photo
+        if (isFirstPhoto) {
+          console.log(`[UploadMatchPanel] Setting uploaded_at and published_at for code ${selectedCode}...`);
+          const now = new Date().toISOString();
+          const { error: updateError } = await supabase
+            .from('photo_codes')
+            .update({
+              uploaded_at: now,
+              published_at: now  // Photos are published immediately after upload
+            })
+            .eq('id', selectedCode);
+
+          if (updateError) console.error('[UploadMatchPanel] Failed to update timestamps:', updateError);
+        }
+
+        console.log(`[UploadMatchPanel] Successfully processed photo: ${upload.file.name}`);
+
+        return photoData;
+      });
+
+      console.log('[UploadMatchPanel] All photo uploads completed, waiting for results...');
+      const uploadResults = await Promise.all(uploadPromises);
+      console.log('[UploadMatchPanel] Upload results:', uploadResults);
+
+      // Refresh codes data
+      console.log('[UploadMatchPanel] Refreshing codes data...');
+      await fetchCodes();
+
+      // Reset selections
+      console.log('[UploadMatchPanel] Resetting selections...');
+      setSelectedPhotos([]);
+      setSelectedCode(preselectedCode?.id || '');
+
+      console.log('[UploadMatchPanel] Upload process completed successfully!');
+      alert('Photos uploaded and matched successfully!');
+
+    } catch (error) {
+      console.error('[UploadMatchPanel] Upload failed with error:', error);
+      console.error('[UploadMatchPanel] Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      alert('Failed to upload photos: ' + error.message);
+    } finally {
+      console.log('[UploadMatchPanel] Upload process finished (success or failure)');
+      setUploading(false);
+    }
+  }, [selectedPhotos, selectedCode, uploads, user, fetchCodes, preselectedCode]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();
@@ -65,15 +250,14 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
 
   const handleMatch = () => {
     if (selectedPhotos.length > 0 && selectedCode) {
-      matchPhotosToCode(selectedPhotos, selectedCode);
-      setSelectedPhotos([]);
-      setSelectedCode(preselectedCode?.id || '');
+      handleUploadAndMatch();
     }
   };
 
-  const handleAutoMatch = (upload) => {
+  const handleAutoMatch = async (upload) => {
     const suggestions = getAutoMatchSuggestions(upload);
     if (suggestions.length > 0) {
+      // For now, just do local matching - actual upload happens when user clicks Upload & Match
       matchPhotosToCode([upload.id], suggestions[0].id);
     }
   };
@@ -235,12 +419,12 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
 
                 <motion.button
                   onClick={handleMatch}
-                  disabled={!selectedCode}
-                  whileHover={{ scale: selectedCode ? 1.05 : 1 }}
-                  whileTap={{ scale: selectedCode ? 0.95 : 1 }}
+                  disabled={!selectedCode || uploading}
+                  whileHover={{ scale: (selectedCode && !uploading) ? 1.05 : 1 }}
+                  whileTap={{ scale: (selectedCode && !uploading) ? 0.95 : 1 }}
                   className="px-6 py-2 bg-teal text-white font-semibold rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-teal/90 transition-colors self-end"
                 >
-                  Match {selectedPhotos.length}
+                  {uploading ? 'Uploading...' : `Upload & Match ${selectedPhotos.length}`}
                 </motion.button>
               </div>
             </motion.div>

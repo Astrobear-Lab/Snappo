@@ -142,25 +142,39 @@ const PhotoUpload = ({ photographerProfile, onUploadSuccess }) => {
 
       if (photoError) throw photoError;
 
-      // Generate photo code
+      // For now, create a new code for each photo
+      // TODO: In the future, use existing codes from GenerateCodeModal
       const { data: codeData, error: codeError } = await supabase.rpc(
         'generate_photo_code'
       );
 
       if (codeError) throw codeError;
 
-      // Create photo code record
-      const { error: photoCodeError } = await supabase
+      // Create photo code record (without photo_id)
+      const { data: photoCodeData, error: photoCodeError } = await supabase
         .from('photo_codes')
         .insert([
           {
-            photo_id: photoData.id,
             code: codeData,
             expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year
           },
-        ]);
+        ])
+        .select()
+        .single();
 
       if (photoCodeError) throw photoCodeError;
+
+      // Link photo to code in code_photos table
+      const { error: linkError } = await supabase
+        .from('code_photos')
+        .insert([
+          {
+            code_id: photoCodeData.id,
+            photo_id: photoData.id,
+          },
+        ]);
+
+      if (linkError) throw linkError;
 
       setProgress(100);
 

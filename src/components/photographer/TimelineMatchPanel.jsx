@@ -225,11 +225,6 @@ const TimelineMatchPanel = () => {
 
         if (blurredError) throw blurredError;
 
-        // Get public URL for blurred version
-        const { data: publicUrlData } = supabase.storage
-          .from('photos')
-          .getPublicUrl(`${filePath}-blurred.${fileExt}`);
-
         // Create photo record
         const { data: photoData, error: photoError } = await supabase
           .from('photos')
@@ -237,7 +232,7 @@ const TimelineMatchPanel = () => {
             {
               photographer_id: profile.id,
               file_url: originalData.path,
-              watermarked_url: publicUrlData.publicUrl, // Stores blurred version URL
+              watermarked_url: blurredData.path, // Store path, not full URL
               title: upload.file.name,
               file_size: upload.file.size,
               status: 'approved',

@@ -101,13 +101,7 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
           throw blurredError;
         }
 
-        // Get public URL for blurred version
-        console.log('[UploadMatchPanel] Getting public URL for blurred photo...');
-        const { data: publicUrlData } = supabase.storage
-          .from('photos')
-          .getPublicUrl(`${filePath}-blurred.${fileExt}`);
-
-        console.log('[UploadMatchPanel] Public URL:', publicUrlData.publicUrl);
+        console.log('[UploadMatchPanel] Blurred path:', blurredData.path);
 
         // Create photo record
         console.log('[UploadMatchPanel] Creating photo record in database...');
@@ -117,7 +111,7 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
             {
               photographer_id: profile.id,
               file_url: originalData.path,
-              watermarked_url: publicUrlData.publicUrl, // Stores blurred version URL
+              watermarked_url: blurredData.path, // Store path, not full URL
               title: upload.file.name,
               file_size: upload.file.size,
               status: 'pending', // Will be approved later

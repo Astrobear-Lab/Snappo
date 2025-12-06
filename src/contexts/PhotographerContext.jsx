@@ -204,6 +204,7 @@ export const PhotographerProvider = ({ children }) => {
               status,
               file_url,
               watermarked_url,
+              is_sample,
               created_at
             )
           )
@@ -237,6 +238,7 @@ export const PhotographerProvider = ({ children }) => {
             id: photo.id,
             url: photo.watermarked_url,
             watermarked: true,
+            isSample: photo.is_sample || false,
             exif: null,
             file: null,
           })),
@@ -457,6 +459,46 @@ export const PhotographerProvider = ({ children }) => {
     });
   }, []);
 
+  const deleteCode = useCallback(async (codeId) => {
+    if (!codeId) return;
+
+    try {
+      console.log('[PhotographerContext] Deleting code:', codeId);
+
+      // Remove linked code photos first to avoid FK issues
+      const { error: codePhotosError } = await supabase
+        .from('code_photos')
+        .delete()
+        .eq('code_id', codeId);
+
+      if (codePhotosError) {
+        throw codePhotosError;
+      }
+
+      const { error: deleteError } = await supabase
+        .from('photo_codes')
+        .delete()
+        .eq('id', codeId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      setCodes((prev) => prev.filter((code) => code.id !== codeId));
+      addNotification({
+        type: 'success',
+        message: 'Code deleted successfully',
+      });
+    } catch (error) {
+      console.error('[PhotographerContext] Failed to delete code:', error);
+      addNotification({
+        type: 'error',
+        message: 'Failed to delete code. Please try again.',
+      });
+      throw error;
+    }
+  }, [addNotification]);
+
   const value = {
     codes,
     uploads,
@@ -472,6 +514,7 @@ export const PhotographerProvider = ({ children }) => {
     extendCode,
     invalidateCode,
     fetchCodes,
+    deleteCode,
   };
 
   return (

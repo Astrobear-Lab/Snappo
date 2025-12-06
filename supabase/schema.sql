@@ -99,9 +99,10 @@ CREATE TABLE IF NOT EXISTS public.photos (
 
   -- File info
   file_url TEXT NOT NULL,
-  watermarked_url TEXT NOT NULL,
+  watermarked_url TEXT NOT NULL, -- Now stores blurred version
   thumbnail_url TEXT,
   file_size INTEGER,
+  is_sample BOOLEAN DEFAULT FALSE, -- If true, shows original even before payment
 
   -- Photo metadata
   title TEXT,

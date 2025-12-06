@@ -6,9 +6,27 @@ import PhotoMetadataAccordion from './PhotoMetadataAccordion';
 import { supabase } from '../../lib/supabase';
 
 const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
-  const { extendCode, invalidateCode } = usePhotographer();
+  const { extendCode, invalidateCode, fetchCodes, deleteCode } = usePhotographer();
 
   if (!code) return null;
+
+  // Toggle sample status for a photo
+  const togglePhotoSample = async (photoId, currentStatus) => {
+    try {
+      const { error } = await supabase
+        .from('photos')
+        .update({ is_sample: !currentStatus })
+        .eq('id', photoId);
+
+      if (error) throw error;
+
+      // Refresh codes to get updated data
+      await fetchCodes();
+    } catch (err) {
+      console.error('Failed to update sample status:', err);
+      alert('Failed to update sample status. Please try again.');
+    }
+  };
 
   // Helper to get photo URL (handles both paths and full URLs)
   const getPhotoUrl = (url) => {
@@ -90,6 +108,20 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
       });
     } else {
       navigator.clipboard.writeText(shareUrl);
+    }
+  };
+
+  const handleDeleteCode = async () => {
+    if (!window.confirm('Are you sure you want to delete this code? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await deleteCode(code.id);
+      onClose();
+    } catch (error) {
+      console.error('Failed to delete code:', error);
+      alert('Failed to delete code. Please try again.');
     }
   };
 
@@ -252,10 +284,24 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                           {photo.watermarked && (
                             <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                               <span className="text-white font-semibold text-sm bg-black/50 px-3 py-1 rounded-lg">
-                                🔒 Watermarked
+                                🔒 Blurred
                               </span>
                             </div>
                           )}
+
+                          {/* Sample toggle button */}
+                          <motion.button
+                            onClick={() => togglePhotoSample(photo.id, photo.isSample)}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className={`absolute top-2 right-2 px-3 py-1 rounded-full font-semibold text-xs shadow-lg transition-all ${
+                              photo.isSample
+                                ? 'bg-teal text-white'
+                                : 'bg-white/90 text-gray-700 hover:bg-white'
+                            }`}
+                          >
+                            {photo.isSample ? '✨ Sample' : 'Mark as Sample'}
+                          </motion.button>
                         </div>
 
                         {/* Photo Metadata Accordion */}
@@ -339,6 +385,15 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   className="w-full py-3 bg-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-300 transition-colors"
                 >
                   Mark as Invalid
+                </motion.button>
+
+                <motion.button
+                  onClick={handleDeleteCode}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors"
+                >
+                  🗑 Delete Code
                 </motion.button>
               </div>
             </div>

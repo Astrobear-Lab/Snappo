@@ -12,6 +12,7 @@ const PhotoView = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [photoData, setPhotoData] = useState(null);
+  const [allPhotos, setAllPhotos] = useState([]);
   const [codeData, setCodeData] = useState(null);
   const [purchasing, setPurchasing] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -104,21 +105,43 @@ const PhotoView = () => {
         return;
       }
 
-      // Use the first photo as primary (for now)
-      // TODO: Support multiple photos in UI
-      const photo = codePhotosData[0].photos;
+      // Use all photos
+      const photos = codePhotosData.map(cp => cp.photos);
 
-      // 4. Get public URLs
-      const { data: watermarkedUrl } = supabase.storage
-        .from('photos')
-        .getPublicUrl(photo.watermarked_url);
+      // 4. Get public URLs and determine what to show
+      const photosWithUrls = photos.map(photo => {
+        // If it's a sample or already purchased, show original
+        const showOriginal = photo.is_sample || photoCodeData.is_purchased;
 
-      console.log('[PhotoView] Photo loaded successfully');
+        if (showOriginal) {
+          const { data: originalUrl } = supabase.storage
+            .from('photos-original')
+            .getPublicUrl(photo.file_url);
 
-      setPhotoData({
-        ...photo,
-        watermarked_public_url: watermarkedUrl.publicUrl,
+          return {
+            ...photo,
+            display_url: originalUrl.publicUrl,
+            is_showing_original: true,
+          };
+        } else {
+          // Show blurred version
+          const { data: blurredUrl } = supabase.storage
+            .from('photos')
+            .getPublicUrl(photo.watermarked_url);
+
+          return {
+            ...photo,
+            display_url: blurredUrl.publicUrl,
+            is_showing_original: false,
+          };
+        }
       });
+
+      console.log('[PhotoView] Photos loaded successfully:', photosWithUrls);
+
+      const samplePhoto = photosWithUrls.find(photo => photo.is_sample);
+      setPhotoData(samplePhoto || photosWithUrls[0]);
+      setAllPhotos(photosWithUrls);
 
       setLoading(false);
     } catch (err) {
@@ -129,11 +152,14 @@ const PhotoView = () => {
   };
 
   const handleFreeDownload = async () => {
-    if (!photoData || !codeData) return;
+    if ((!photoData && allPhotos.length === 0) || !codeData) return;
 
     setDownloading(true);
 
     try {
+      const samplePhoto = allPhotos.find(photo => photo.is_sample) || photoData;
+      if (!samplePhoto) throw new Error('No sample photo found for download');
+
       // Update redemption status
       if (!codeData.is_redeemed) {
         await supabase
@@ -149,15 +175,15 @@ const PhotoView = () => {
         await supabase
           .from('photos')
           .update({
-            views_count: (photoData.views_count || 0) + 1,
+            views_count: (samplePhoto.views_count || 0) + 1,
           })
-          .eq('id', photoData.id);
+          .eq('id', samplePhoto.id);
       }
 
-      // Download watermarked version
+      // Download the dedicated sample image (or fallback to preview)
       const link = document.createElement('a');
-      link.href = photoData.watermarked_public_url;
-      link.download = `snappo-${code}-watermarked.jpg`;
+      link.href = samplePhoto.display_url;
+      link.download = `snappo-${code}-sample.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -171,6 +197,8 @@ const PhotoView = () => {
       setDownloading(false);
     }
   };
+
+  const lockedPhotos = allPhotos.filter(photo => !photo.is_sample);
 
   const handlePurchase = async () => {
     if (!photoData || !codeData) return;
@@ -334,16 +362,23 @@ const PhotoView = () => {
           >
             <div className="relative rounded-3xl overflow-hidden shadow-2xl">
               <img
-                src={photoData?.watermarked_public_url}
+                src={photoData?.display_url}
                 alt={photoData?.title || 'Your photo'}
                 className="w-full h-auto object-cover"
               />
-              {!codeData?.is_purchased && (
+              {!photoData?.is_showing_original && !codeData?.is_purchased && (
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-center pb-8">
                   <div className="bg-white/90 backdrop-blur-sm px-6 py-3 rounded-full">
                     <p className="text-gray-800 font-semibold text-lg">
-                      🔒 Watermark Version
+                      🔒 Blurred Preview
                     </p>
+                  </div>
+                </div>
+              )}
+              {photoData?.is_sample && !codeData?.is_purchased && (
+                <div className="absolute top-4 right-4">
+                  <div className="bg-teal text-white px-4 py-2 rounded-full font-semibold shadow-lg">
+                    ✨ Sample
                   </div>
                 </div>
               )}
@@ -502,6 +537,59 @@ const PhotoView = () => {
             )}
           </motion.div>
         </div>
+
+        {!codeData?.is_purchased && lockedPhotos.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="mt-12"
+          >
+            <div className="bg-white rounded-3xl p-8 shadow-2xl">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-6">
+                <div>
+                  <p className="text-sm font-semibold text-teal uppercase tracking-[0.2em]">
+                    Locked Moments
+                  </p>
+                  <h2 className="text-3xl font-bold text-navy mt-2">
+                    Unlock the rest of your gallery
+                  </h2>
+                  <p className="text-gray-600 mt-2">
+                    Preview the rest of your collection and unlock them all with one purchase.
+                  </p>
+                </div>
+                <motion.button
+                  onClick={handlePurchase}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="px-8 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-2xl shadow-lg"
+                >
+                  🔓 Unlock All Photos
+                </motion.button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {lockedPhotos.map((photo, index) => (
+                  <div
+                    key={photo.id || `locked-${index}`}
+                    className="relative rounded-2xl overflow-hidden shadow-lg group"
+                  >
+                    <img
+                      src={photo.display_url}
+                      alt={photo.title || `Locked photo ${index + 1}`}
+                      className="w-full h-48 object-cover grayscale"
+                    />
+                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white gap-2">
+                      <span className="text-3xl">🔒</span>
+                      <p className="font-semibold">Locked Preview</p>
+                      <p className="text-sm text-white/80">Purchase to reveal</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

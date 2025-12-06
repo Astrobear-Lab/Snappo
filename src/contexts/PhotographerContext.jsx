@@ -236,8 +236,10 @@ export const PhotographerProvider = ({ children }) => {
           note: '', // Could be stored separately if needed
           photos: photos.map(photo => ({
             id: photo.id,
-            url: photo.watermarked_url,
-            watermarked: true,
+            url: photo.file_url || photo.watermarked_url,
+            original_url: photo.file_url,
+            watermarked_url: photo.watermarked_url,
+            watermarked: Boolean(photo.watermarked_url),
             isSample: photo.is_sample || false,
             exif: null,
             file: null,

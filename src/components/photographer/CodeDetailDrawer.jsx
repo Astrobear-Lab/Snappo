@@ -29,12 +29,21 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   };
 
   // Helper to get photo URL (handles both paths and full URLs)
-  const getPhotoUrl = (url) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url; // Already a full URL
-    // Convert path to public URL
-    const { data } = supabase.storage.from('photos').getPublicUrl(url);
-    return data.publicUrl;
+  const getPhotoUrl = (photo) => {
+    if (!photo) return '';
+
+    const buildUrl = (bucket, path) => {
+      if (!path) return '';
+      if (typeof path === 'string' && path.startsWith('http')) return path;
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      return data.publicUrl;
+    };
+
+    if (photo.original_url) {
+      return buildUrl('photos-original', photo.original_url);
+    }
+
+    return buildUrl('photos', photo.url || photo.watermarked_url);
   };
 
   const timeline = [
@@ -277,11 +286,11 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                       <div key={photo.id} className="flex flex-col">
                         <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group">
                           <img
-                            src={getPhotoUrl(photo.url)}
+                            src={getPhotoUrl(photo)}
                             alt="Photo"
                             className="w-full h-full object-cover"
                           />
-                          {photo.watermarked && (
+                          {photo.watermarked && !photo.original_url && (
                             <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                               <span className="text-white font-semibold text-sm bg-black/50 px-3 py-1 rounded-lg">
                                 🔒 Blurred

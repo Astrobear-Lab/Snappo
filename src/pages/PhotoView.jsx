@@ -199,7 +199,6 @@ const PhotoView = () => {
   };
 
   const lockedPhotos = allPhotos.filter(photo => !photo.is_sample);
-  const samplePreview = allPhotos.find(photo => photo.is_sample) || photoData;
   const lockedCount = lockedPhotos.length;
 
   const handlePurchase = async () => {
@@ -355,46 +354,6 @@ const PhotoView = () => {
           </div>
         </motion.div>
 
-        {/* Process Overview */}
-        <motion.div
-          initial={{ opacity: 0, y: -15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12"
-        >
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-left">
-            <p className="text-xs font-semibold text-teal uppercase tracking-[0.2em] mb-2">
-              Step 1
-            </p>
-            <h3 className="text-lg font-bold text-navy">Preview your sample</h3>
-            <p className="text-gray-600 mt-2">
-              {samplePreview
-                ? 'This sample is free to view and download.'
-                : 'Upload pending sample photo.'}
-            </p>
-          </div>
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-left">
-            <p className="text-xs font-semibold text-cyan-600 uppercase tracking-[0.2em] mb-2">
-              Step 2
-            </p>
-            <h3 className="text-lg font-bold text-navy">Unlock remaining shots</h3>
-            <p className="text-gray-600 mt-2">
-              {lockedCount > 0
-                ? `${lockedCount} blurred photo${lockedCount > 1 ? 's' : ''} waiting`
-                : 'Everything is unlocked and ready.'}
-            </p>
-          </div>
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-left">
-            <p className="text-xs font-semibold text-purple-600 uppercase tracking-[0.2em] mb-2">
-              Step 3
-            </p>
-            <h3 className="text-lg font-bold text-navy">Download & enjoy</h3>
-            <p className="text-gray-600 mt-2">
-              Keep the sample or unlock to download every photo in full quality.
-            </p>
-          </div>
-        </motion.div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Photo Preview */}
           <motion.div
@@ -403,13 +362,6 @@ const PhotoView = () => {
             transition={{ delay: 0.2 }}
           >
             <div className="relative rounded-3xl overflow-hidden shadow-2xl">
-              {!codeData?.is_purchased && (
-                <div className="absolute top-4 left-4 z-10">
-                  <div className="bg-white/90 px-4 py-2 rounded-full font-semibold text-gray-800 shadow">
-                    Step 1 · Sample Preview
-                  </div>
-                </div>
-              )}
               <img
                 src={photoData?.display_url}
                 alt={photoData?.title || 'Your photo'}
@@ -441,12 +393,27 @@ const PhotoView = () => {
               {photoData?.description && (
                 <p className="text-gray-600 mb-4">{photoData.description}</p>
               )}
+              {photoData?.is_sample && !codeData?.is_purchased && (
+                <p className="text-sm text-teal font-semibold mb-2">
+                  This preview is free to download.
+                </p>
+              )}
               {photoData?.location && (
                 <p className="text-gray-500 flex items-center gap-2">
                   <span>📍</span>
                   {photoData.location}
                 </p>
               )}
+
+              <motion.button
+                onClick={handleFreeDownload}
+                disabled={downloading}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="mt-6 w-full py-4 bg-gradient-to-r from-gray-600 to-gray-700 text-white font-bold text-lg rounded-xl shadow-lg disabled:opacity-50 transition-all"
+              >
+                {downloading ? 'Downloading...' : '⬇️ Download Free Preview'}
+              </motion.button>
             </div>
           </motion.div>
 
@@ -458,50 +425,11 @@ const PhotoView = () => {
             className="space-y-6"
           >
             <div>
-              <p className="text-xs font-semibold text-cyan-600 uppercase tracking-[0.3em] mb-2">
-                Step 2
-              </p>
-              <h2 className="text-2xl font-bold text-navy">Choose how you want your photo</h2>
+              <h2 className="text-2xl font-bold text-navy">Download options</h2>
               <p className="text-gray-600">
-                Download the sample for free or unlock every shot in full resolution.
+                Keep the complimentary preview or unlock the entire gallery in original quality.
               </p>
             </div>
-            {/* Free Download */}
-            <div className="bg-white rounded-3xl p-8 shadow-xl">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-2xl font-bold text-navy mb-2">Free Download</h3>
-                  <p className="text-gray-600">Get the watermarked version</p>
-                </div>
-                <div className="text-4xl">🆓</div>
-              </div>
-
-              <ul className="space-y-3 mb-6">
-                <li className="flex items-center gap-3 text-gray-700">
-                  <span className="text-green-500 text-xl">✓</span>
-                  Instant download
-                </li>
-                <li className="flex items-center gap-3 text-gray-700">
-                  <span className="text-green-500 text-xl">✓</span>
-                  High quality (with watermark)
-                </li>
-                <li className="flex items-center gap-3 text-gray-700">
-                  <span className="text-green-500 text-xl">✓</span>
-                  Perfect for social media
-                </li>
-              </ul>
-
-              <motion.button
-                onClick={handleFreeDownload}
-                disabled={downloading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full py-4 bg-gradient-to-r from-gray-600 to-gray-700 text-white font-bold text-lg rounded-xl shadow-lg disabled:opacity-50 transition-all"
-              >
-                {downloading ? 'Downloading...' : '⬇️ Download Free Version'}
-              </motion.button>
-            </div>
-
             {/* Purchase Full Quality */}
             {!codeData?.is_purchased ? (
               <div className="bg-gradient-to-br from-teal to-cyan-500 rounded-3xl p-8 shadow-xl text-white relative overflow-hidden">
@@ -606,17 +534,11 @@ const PhotoView = () => {
             <div className="bg-white rounded-3xl p-8 shadow-2xl">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-6">
                 <div>
-                  <p className="text-xs font-semibold text-purple-600 uppercase tracking-[0.3em]">
-                    Step 3
-                  </p>
-                  <p className="text-sm font-semibold text-teal uppercase tracking-[0.2em]">
-                    Locked Moments
-                  </p>
                   <h2 className="text-3xl font-bold text-navy mt-2">
-                    Unlock the rest of your gallery
+                    Locked gallery previews
                   </h2>
                   <p className="text-gray-600 mt-2">
-                    Preview the rest of your collection and unlock them all with one purchase.
+                    There {lockedCount === 1 ? 'is' : 'are'} {lockedCount} more moment{lockedCount === 1 ? '' : 's'} waiting in full quality.
                   </p>
                 </div>
                 <motion.button

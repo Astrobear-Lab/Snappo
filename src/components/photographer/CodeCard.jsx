@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import StatusPill from './StatusPill';
 import QRDisplay from './QRDisplay';
@@ -8,12 +8,21 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
   const [showQR, setShowQR] = useState(false);
 
   // Helper to get photo URL (handles both paths and full URLs)
-  const getPhotoUrl = (url) => {
-    if (!url) return '';
-    if (url.startsWith('http')) return url; // Already a full URL
-    // Convert path to public URL
-    const { data } = supabase.storage.from('photos').getPublicUrl(url);
-    return data.publicUrl;
+  const getPhotoUrl = (photo) => {
+    if (!photo) return '';
+
+    const buildUrl = (bucket, path) => {
+      if (!path) return '';
+      if (typeof path === 'string' && path.startsWith('http')) return path;
+      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+      return data.publicUrl;
+    };
+
+    if (photo.original_url) {
+      return buildUrl('photos-original', photo.original_url);
+    }
+
+    return buildUrl('photos', photo.url || photo.watermarked_url);
   };
 
   const formatTimeAgo = (date) => {
@@ -86,20 +95,25 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
       </div>
 
       {/* QR Code Expansion */}
-      {showQR && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: 'auto' }}
-          exit={{ opacity: 0, height: 0 }}
-          className="mb-4 pt-4 border-t border-gray-100"
-        >
-          <QRDisplay
-            code={code.code}
-            link={`${window.location.origin}/photo/${code.code}`}
-            size="medium"
-          />
-        </motion.div>
-      )}
+      <AnimatePresence initial={false}>
+        {showQR && (
+          <motion.div
+            key="qr-panel"
+            layout
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mb-4 pt-4 border-t border-gray-100"
+          >
+            <QRDisplay
+              code={code.code}
+              link={`${window.location.origin}/photo/${code.code}`}
+              size="medium"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3 mb-4 py-3 border-t border-b border-gray-100">
@@ -126,11 +140,11 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
               className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gray-100"
             >
               <img
-                src={getPhotoUrl(photo.url)}
+                src={getPhotoUrl(photo)}
                 alt="Photo"
                 className="w-full h-full object-cover"
               />
-              {photo.watermarked && (
+              {photo.watermarked && !photo.original_url && (
                 <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
                   <span className="text-xs text-white drop-shadow">🔒</span>
                 </div>

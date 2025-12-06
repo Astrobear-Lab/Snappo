@@ -86,7 +86,7 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
 
         // Create blurred version
         console.log('[UploadMatchPanel] Creating blurred version...');
-        const blurredBlob = await blurImage(upload.file, 20);
+        const blurredBlob = await blurImage(upload.file, 40);
 
         // Upload blurred version to public bucket
         console.log('[UploadMatchPanel] Uploading blurred version to photos bucket...');

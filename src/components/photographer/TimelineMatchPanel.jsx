@@ -216,7 +216,7 @@ const TimelineMatchPanel = () => {
         if (originalError) throw originalError;
 
         // Create blurred version
-        const blurredBlob = await blurImage(upload.file, 20);
+        const blurredBlob = await blurImage(upload.file, 40);
 
         // Upload blurred version to public storage
         const { data: blurredData, error: blurredError } = await supabase.storage

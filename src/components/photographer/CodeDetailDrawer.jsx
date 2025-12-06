@@ -79,7 +79,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
     return `${days}d ago`;
   };
 
-  const shareUrl = `${window.location.origin}/view/${code.code}`;
+  const shareUrl = `${window.location.origin}/photo/${code.code}`;
 
   const handleShare = () => {
     if (navigator.share) {

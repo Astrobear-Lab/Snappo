@@ -2,28 +2,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import StatusPill from './StatusPill';
 import QRDisplay from './QRDisplay';
-import { supabase } from '../../lib/supabase';
-
 const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
   const [showQR, setShowQR] = useState(false);
 
   // Helper to get photo URL (handles both paths and full URLs)
-  const getPhotoUrl = (photo) => {
-    if (!photo) return '';
-
-    const buildUrl = (bucket, path) => {
-      if (!path) return '';
-      if (typeof path === 'string' && path.startsWith('http')) return path;
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      return data.publicUrl;
-    };
-
-    if (photo.original_url) {
-      return buildUrl('photos-original', photo.original_url);
-    }
-
-    return buildUrl('photos', photo.url || photo.watermarked_url);
-  };
+  const getPhotoUrl = (photo) =>
+    photo?.preview_url || photo?.original_url || photo?.blurred_url || '';
 
   const formatTimeAgo = (date) => {
     const seconds = Math.floor((new Date() - date) / 1000);

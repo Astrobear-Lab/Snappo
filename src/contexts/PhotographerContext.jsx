@@ -218,9 +218,31 @@ export const PhotographerProvider = ({ children }) => {
         throw codesError;
       }
 
+      const buildPublicUrl = (bucket, path) => {
+        if (!path) return null;
+        if (typeof path === 'string' && path.startsWith('http')) return path;
+        const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+        return data?.publicUrl || null;
+      };
+
+      const buildSignedUrl = async (bucket, path) => {
+        if (!path) return null;
+        if (typeof path === 'string' && path.startsWith('http')) return path;
+        const { data, error } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(path, 60 * 60); // 1 hour
+
+        if (error) {
+          console.error('[PhotographerContext] Failed to create signed URL:', error);
+          return null;
+        }
+
+        return data?.signedUrl || null;
+      };
+
       // Transform data to match the expected format
       console.log('[PhotographerContext] Transforming codes data...');
-      const transformedCodes = codesData.map(code => {
+      const transformedCodes = await Promise.all(codesData.map(async (code) => {
         const photos = code.code_photos?.map(cp => cp.photos).filter(Boolean) || [];
         console.log(`[PhotographerContext] Code ${code.code}: found ${photos.length} photos`);
         return {
@@ -234,21 +256,28 @@ export const PhotographerProvider = ({ children }) => {
           expiresAt: new Date(code.expires_at),
           tags: [], // Could be stored separately if needed
           note: '', // Could be stored separately if needed
-          photos: photos.map(photo => ({
-            id: photo.id,
-            url: photo.file_url || photo.watermarked_url,
-            original_url: photo.file_url,
-            watermarked_url: photo.watermarked_url,
-            watermarked: Boolean(photo.watermarked_url),
-            isSample: photo.is_sample || false,
-            exif: null,
-            file: null,
-          })),
+          photos: await Promise.all(
+            photos.map(async (photo) => {
+              const originalUrl = await buildSignedUrl('photos-original', photo.file_url);
+              const blurredUrl = buildPublicUrl('photos', photo.watermarked_url);
+
+              return {
+                id: photo.id,
+                preview_url: originalUrl || blurredUrl || null,
+                original_url: originalUrl,
+                blurred_url: blurredUrl,
+                watermarked: !originalUrl && Boolean(blurredUrl),
+                isSample: photo.is_sample || false,
+                exif: null,
+                file: null,
+              };
+            })
+          ),
           views: 0, // Would need to be tracked separately
           unlocks: code.is_redeemed ? 1 : 0,
           unlockedAt: code.redeemed_at ? new Date(code.redeemed_at) : null,
         };
-      });
+      }));
 
       console.log('[PhotographerContext] Final transformed codes:', transformedCodes);
       setCodes(transformedCodes);

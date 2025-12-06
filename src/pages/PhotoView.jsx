@@ -354,201 +354,141 @@ const PhotoView = () => {
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Photo Preview */}
+        <div className="space-y-12">
+          {/* Sample Preview */}
           <motion.div
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
+            className="bg-white/70 rounded-3xl shadow-xl p-6 md:p-10"
           >
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl">
-              <img
-                src={photoData?.display_url}
-                alt={photoData?.title || 'Your photo'}
-                className="w-full h-auto object-cover"
-              />
-              {!photoData?.is_showing_original && !codeData?.is_purchased && (
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-center pb-8">
-                  <div className="bg-white/90 backdrop-blur-sm px-6 py-3 rounded-full">
-                    <p className="text-gray-800 font-semibold text-lg">
-                      🔒 Blurred Preview
-                    </p>
+            <div className="grid md:grid-cols-2 gap-8 items-start">
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl">
+                <img
+                  src={photoData?.display_url}
+                  alt={photoData?.title || 'Your photo'}
+                  className="w-full h-auto object-cover"
+                />
+                {!photoData?.is_showing_original && !codeData?.is_purchased && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent flex items-end justify-center pb-8">
+                    <div className="bg-white/90 backdrop-blur-sm px-6 py-3 rounded-full">
+                      <p className="text-gray-800 font-semibold text-lg">
+                        🔒 Blurred Preview
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
-              {photoData?.is_sample && !codeData?.is_purchased && (
-                <div className="absolute top-4 right-4">
-                  <div className="bg-teal text-white px-4 py-2 rounded-full font-semibold shadow-lg">
-                    ✨ Sample
+                )}
+                {photoData?.is_sample && !codeData?.is_purchased && (
+                  <div className="absolute top-4 right-4">
+                    <div className="bg-teal text-white px-4 py-2 rounded-full font-semibold shadow-lg">
+                      ✨ Sample Preview
+                    </div>
                   </div>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-500 mb-1">PREVIEW TITLE</p>
+                  <h3 className="text-3xl font-bold text-navy">
+                    {photoData?.title || 'Untitled'}
+                  </h3>
                 </div>
-              )}
-            </div>
 
-            {/* Photo Info */}
-            <div className="mt-6 bg-white rounded-2xl p-6 shadow-lg">
-              <h3 className="text-2xl font-bold text-navy mb-2">
-                {photoData?.title || 'Untitled'}
-              </h3>
-              {photoData?.description && (
-                <p className="text-gray-600 mb-4">{photoData.description}</p>
-              )}
-              {photoData?.is_sample && !codeData?.is_purchased && (
-                <p className="text-sm text-teal font-semibold mb-2">
-                  This preview is free to download.
-                </p>
-              )}
-              {photoData?.location && (
-                <p className="text-gray-500 flex items-center gap-2">
-                  <span>📍</span>
-                  {photoData.location}
-                </p>
-              )}
+                {photoData?.description && (
+                  <p className="text-gray-600 text-lg leading-relaxed">{photoData.description}</p>
+                )}
 
-              <motion.button
-                onClick={handleFreeDownload}
-                disabled={downloading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="mt-6 w-full py-4 bg-gradient-to-r from-gray-600 to-gray-700 text-white font-bold text-lg rounded-xl shadow-lg disabled:opacity-50 transition-all"
-              >
-                {downloading ? 'Downloading...' : '⬇️ Download Free Preview'}
-              </motion.button>
+                {photoData?.location && (
+                  <p className="text-gray-500 flex items-center gap-2">
+                    <span>📍</span>
+                    {photoData.location}
+                  </p>
+                )}
+
+                <div className="rounded-2xl bg-teal/5 border border-teal/15 p-4">
+                  <p className="text-sm font-semibold text-teal mb-1">FREE PREVIEW</p>
+                  <p className="text-gray-600">
+                    Download this complimentary sample instantly. The rest of the gallery remains locked until purchase.
+                  </p>
+                </div>
+
+                <motion.button
+                  onClick={handleFreeDownload}
+                  disabled={downloading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full mt-4 py-4 bg-gradient-to-r from-gray-900 to-gray-700 text-white font-bold text-lg rounded-2xl shadow-lg disabled:opacity-50 transition-all"
+                >
+                  {downloading ? 'Downloading...' : '⬇️ Download Free Preview'}
+                </motion.button>
+              </div>
             </div>
           </motion.div>
 
-          {/* Purchase Options */}
-          <motion.div
-            initial={{ opacity: 0, x: 30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4 }}
-            className="space-y-6"
-          >
-            <div>
-              <h2 className="text-2xl font-bold text-navy">Download options</h2>
-              <p className="text-gray-600">
-                Keep the complimentary preview or unlock the entire gallery in original quality.
+          {/* Locked Gallery / Purchase */}
+          {codeData?.is_purchased ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-green-50 border border-green-200 rounded-3xl p-8 text-center shadow-inner"
+            >
+              <div className="text-6xl mb-4">🎉</div>
+              <h3 className="text-3xl font-bold text-green-800 mb-2">Full Gallery Unlocked</h3>
+              <p className="text-green-700 mb-6">
+                Enjoy every moment in its original quality. Re-download anytime.
               </p>
-            </div>
-            {/* Purchase Full Quality */}
-            {!codeData?.is_purchased ? (
-              <div className="bg-gradient-to-br from-teal to-cyan-500 rounded-3xl p-8 shadow-xl text-white relative overflow-hidden">
-                {/* Background decoration */}
-                <div className="absolute -right-10 -top-10 text-9xl opacity-10">💎</div>
-
-                <div className="relative z-10">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h3 className="text-2xl font-bold mb-2">Full Quality</h3>
-                      <p className="text-white/90">No watermark, pure perfection</p>
-                    </div>
-                    <div className="text-4xl">💎</div>
+              <motion.button
+                onClick={handleFreeDownload}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-8 py-4 bg-green-500 text-white font-bold rounded-2xl"
+              >
+                ⬇️ Download Again
+              </motion.button>
+            </motion.div>
+          ) : lockedPhotos.length > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-3xl p-6 md:p-10 shadow-2xl"
+            >
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-8">
+                <div>
+                  <p className="text-sm font-semibold text-teal uppercase tracking-[0.3em]">
+                    Locked Gallery
+                  </p>
+                  <h2 className="text-3xl font-bold text-navy mt-2">
+                    {lockedCount} more moment{lockedCount === 1 ? '' : 's'} waiting
+                  </h2>
+                  <p className="text-gray-600 mt-2">
+                    Unlock the rest of your gallery to reveal crystal-clear versions, remove watermarks, and download them forever.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 w-full md:w-auto">
+                  <div className="bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-left">
+                    <p className="font-semibold text-gray-800">What you get</p>
+                    <ul className="mt-2 text-sm text-gray-600 space-y-1">
+                      <li>• All photos in original resolution</li>
+                      <li>• No watermark, no limits</li>
+                      <li>• Direct support for the photographer</li>
+                    </ul>
                   </div>
-
-                  <ul className="space-y-3 mb-6">
-                    <li className="flex items-center gap-3">
-                      <span className="text-white text-xl">✓</span>
-                      Original quality (no watermark)
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="text-white text-xl">✓</span>
-                      Full resolution
-                    </li>
-                    <li className="flex items-center gap-3">
-                      <span className="text-white text-xl">✓</span>
-                      Support the photographer ($2)
-                    </li>
-                  </ul>
-
-                  <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4 mb-6">
-                    <div className="flex items-center justify-between">
-                      <span className="text-lg">One-time payment</span>
-                      <span className="text-4xl font-bold">$3</span>
-                    </div>
-                  </div>
-
                   {MOCK_PAYMENT && (
-                    <div className="bg-yellow-400 text-yellow-900 rounded-lg px-4 py-2 mb-4 text-sm font-semibold text-center">
-                      🎭 TEST MODE - No real payment required
-                    </div>
+                    <p className="text-xs font-semibold text-yellow-700 text-center bg-yellow-100 rounded-full px-3 py-1">
+                      🎭 Test mode — payment simulated
+                    </p>
                   )}
-
                   <motion.button
                     onClick={handlePurchase}
                     disabled={purchasing}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full py-4 bg-white text-teal font-bold text-lg rounded-xl shadow-lg disabled:opacity-50 transition-all"
+                    className="w-full px-8 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-2xl shadow-lg disabled:opacity-50"
                   >
-                    {purchasing ? 'Processing...' : '🔓 Unlock Full Quality $3'}
+                    {purchasing ? 'Processing...' : `🔓 Unlock All Photos $3`}
                   </motion.button>
                 </div>
-              </div>
-            ) : (
-              <div className="bg-green-50 border-2 border-green-500 rounded-3xl p-8 text-center">
-                <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-2xl font-bold text-green-800 mb-2">
-                  Already Purchased!
-                </h3>
-                <p className="text-green-700 mb-6">
-                  You own the full quality version of this photo
-                </p>
-                <motion.button
-                  onClick={handleFreeDownload}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="px-8 py-4 bg-green-500 text-white font-bold rounded-xl"
-                >
-                  ⬇️ Download Again
-                </motion.button>
-              </div>
-            )}
-
-            {/* Photographer Info */}
-            {photoData?.photographer && (
-              <div className="bg-white rounded-2xl p-6 shadow-lg">
-                <h4 className="text-sm font-semibold text-gray-500 mb-3">PHOTOGRAPHED BY</h4>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gradient-to-br from-teal to-purple rounded-full flex items-center justify-center text-white font-bold text-xl">
-                    {photoData.photographer.profile?.full_name?.[0] || '📷'}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-navy">
-                      {photoData.photographer.profile?.full_name || 'Snappo Photographer'}
-                    </p>
-                    <p className="text-sm text-gray-500">Professional Photographer</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </motion.div>
-        </div>
-
-        {!codeData?.is_purchased && lockedPhotos.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="mt-12"
-          >
-            <div className="bg-white rounded-3xl p-8 shadow-2xl">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-6">
-                <div>
-                  <h2 className="text-3xl font-bold text-navy mt-2">
-                    Locked gallery previews
-                  </h2>
-                  <p className="text-gray-600 mt-2">
-                    There {lockedCount === 1 ? 'is' : 'are'} {lockedCount} more moment{lockedCount === 1 ? '' : 's'} waiting in full quality.
-                  </p>
-                </div>
-                <motion.button
-                  onClick={handlePurchase}
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="px-8 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-2xl shadow-lg"
-                >
-                  🔓 Unlock All Photos
-                </motion.button>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -570,9 +510,40 @@ const PhotoView = () => {
                   </div>
                 ))}
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-3xl p-8 shadow-lg text-center"
+            >
+              <h3 className="text-2xl font-bold text-navy mb-2">More photos coming soon</h3>
+              <p className="text-gray-600">Your photographer will add the rest of your gallery shortly.</p>
+            </motion.div>
+          )}
+
+          {/* Photographer Info */}
+          {photoData?.photographer && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-3xl p-6 shadow-lg"
+            >
+              <h4 className="text-sm font-semibold text-gray-500 mb-3">PHOTOGRAPHED BY</h4>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-teal to-purple rounded-full flex items-center justify-center text-white font-bold text-xl">
+                  {photoData.photographer.profile?.full_name?.[0] || '📷'}
+                </div>
+                <div>
+                  <p className="font-semibold text-navy">
+                    {photoData.photographer.profile?.full_name || 'Snappo Photographer'}
+                  </p>
+                  <p className="text-sm text-gray-500">Professional Photographer</p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </div>
       </div>
     </div>
   );

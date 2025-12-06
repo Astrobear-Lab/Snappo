@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
 import QRDisplay from './QRDisplay';
 import StatusPill from './StatusPill';
@@ -7,6 +8,11 @@ import { supabase } from '../../lib/supabase';
 
 const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const { extendCode, invalidateCode, fetchCodes, deleteCode } = usePhotographer();
+  const [photos, setPhotos] = useState(code?.photos || []);
+
+  useEffect(() => {
+    setPhotos(code?.photos || []);
+  }, [code]);
 
   if (!code) return null;
 
@@ -22,6 +28,11 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
 
       // Refresh codes to get updated data
       await fetchCodes();
+      setPhotos((prev) =>
+        prev.map((photo) =>
+          photo.id === photoId ? { ...photo, isSample: !currentStatus } : photo
+        )
+      );
     } catch (err) {
       console.error('Failed to update sample status:', err);
       alert('Failed to update sample status. Please try again.');
@@ -29,22 +40,8 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   };
 
   // Helper to get photo URL (handles both paths and full URLs)
-  const getPhotoUrl = (photo) => {
-    if (!photo) return '';
-
-    const buildUrl = (bucket, path) => {
-      if (!path) return '';
-      if (typeof path === 'string' && path.startsWith('http')) return path;
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      return data.publicUrl;
-    };
-
-    if (photo.original_url) {
-      return buildUrl('photos-original', photo.original_url);
-    }
-
-    return buildUrl('photos', photo.url || photo.watermarked_url);
-  };
+  const getPhotoUrl = (photo) =>
+    photo?.preview_url || photo?.original_url || photo?.blurred_url || '';
 
   const timeline = [
     {
@@ -276,13 +273,13 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
               </div>
 
               {/* Photos */}
-              {code.photos.length > 0 && (
+              {photos.length > 0 && (
                 <div>
                   <h3 className="text-lg font-bold text-gray-800 mb-4">
-                    Photos ({code.photos.length})
+                    Photos ({photos.length})
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    {code.photos.map((photo) => (
+                    {photos.map((photo) => (
                       <div key={photo.id} className="flex flex-col">
                         <div className="relative aspect-square rounded-xl overflow-hidden bg-gray-100 group">
                           <img

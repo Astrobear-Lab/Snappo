@@ -47,7 +47,10 @@ const ActiveCodesBoard = ({ onCodeClick, onUploadClick }) => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+      <div
+        className="flex gap-2 mb-6 overflow-x-auto pb-2 pt-1"
+        style={{ overflowY: 'visible' }}
+      >
         {tabs.map((tab) => {
           const count = getCodesByStatus(tab.id).length;
           const isActive = activeTab === tab.id;

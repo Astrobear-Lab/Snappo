@@ -1,5 +1,5 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -24,12 +24,13 @@ const TimelineMatchPanel = () => {
   const { uploads, codes, uploadPhotos, fetchCodes } = usePhotographer();
 
   const [isDragging, setIsDragging] = useState(false);
-  const [photoCodeMap, setPhotoCodeMap] = useState({}); // { photoId: codeId }
+  const [photoAssignments, setPhotoAssignments] = useState({}); // { photoId: { codeId, isAuto, matchedAt } }
   const [activeId, setActiveId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
+  const [autoDismissedPhotos, setAutoDismissedPhotos] = useState({});
 
-  const fileInputRef = useState(null);
+  const fileInputRef = useRef(null);
 
   // Sensors for drag and drop
   const sensors = useSensors(
@@ -47,43 +48,122 @@ const TimelineMatchPanel = () => {
     }));
   }, []);
 
-  // Auto-match photos to nearest code based on time
-  const autoMatchPhotos = useCallback(() => {
-    const newMap = {};
-    const sortedCodes = [...codes]
-      .filter(c => c.status === 'pending_upload')
-      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+  const assignPhotoToCode = useCallback((photoId, codeId, { isAuto = false } = {}) => {
+    setPhotoAssignments(prev => {
+      const next = { ...prev };
 
-    uploads.forEach(upload => {
-      if (!upload.exif?.DateTimeOriginal) return;
+      if (!codeId) {
+        if (next[photoId]) {
+          delete next[photoId];
+        }
+        return next;
+      }
 
-      const photoTime = new Date(upload.exif.DateTimeOriginal);
-      let closestCode = null;
-      let minDiff = Infinity;
+      next[photoId] = {
+        codeId,
+        isAuto,
+        matchedAt: new Date().toISOString(),
+      };
 
-      sortedCodes.forEach(code => {
-        const codeTime = new Date(code.createdAt);
-        const diff = Math.abs(photoTime - codeTime);
+      return next;
+    });
 
-        // Match if within 4 hours
-        if (diff < 4 * 60 * 60 * 1000 && diff < minDiff) {
-          minDiff = diff;
-          closestCode = code;
+    if (codeId) {
+      setAutoDismissedPhotos(prev => {
+        if (!prev[photoId]) return prev;
+        const next = { ...prev };
+        delete next[photoId];
+        return next;
+      });
+    }
+  }, []);
+
+  const clearAssignment = useCallback((photoId) => {
+    setAutoDismissedPhotos(prev => ({
+      ...prev,
+      [photoId]: true,
+    }));
+    assignPhotoToCode(photoId, null);
+  }, [assignPhotoToCode]);
+
+  // Auto-match photos to nearest code based on capture time
+  useEffect(() => {
+    if (!uploads.length || !codes.length) return;
+
+    const revivedPhotos = new Set();
+
+    setPhotoAssignments(prev => {
+      const next = { ...prev };
+      let updated = false;
+
+      const pendingCodes = [...codes]
+        .filter(c => c.status === 'pending_upload')
+        .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+      uploads.forEach(upload => {
+        if (!upload.exif?.DateTimeOriginal) return;
+        if (autoDismissedPhotos[upload.id]) return;
+
+        const existing = next[upload.id];
+        if (existing && !existing.isAuto) {
+          return; // respect manual placement
+        }
+
+        const photoTime = new Date(upload.exif.DateTimeOriginal);
+        let closestCode = null;
+        let minDiff = Infinity;
+
+        pendingCodes.forEach(code => {
+          const codeTime = new Date(code.createdAt);
+          const diff = Math.abs(photoTime - codeTime);
+
+          if (diff < 4 * 60 * 60 * 1000 && diff < minDiff) {
+            minDiff = diff;
+            closestCode = code;
+          }
+        });
+
+        if (closestCode) {
+          if (!existing || existing.codeId !== closestCode.id || !existing.isAuto) {
+            next[upload.id] = {
+              codeId: closestCode.id,
+              isAuto: true,
+              matchedAt: new Date().toISOString(),
+            };
+            revivedPhotos.add(upload.id);
+            updated = true;
+          }
+        } else if (existing && existing.isAuto) {
+          delete next[upload.id];
+          updated = true;
         }
       });
 
-      if (closestCode) {
-        newMap[upload.id] = closestCode.id;
-      }
+      // Clean up assignments for codes that are no longer pending
+      Object.entries(next).forEach(([photoId, assignment]) => {
+        const exists = pendingCodes.some(code => code.id === assignment.codeId);
+        if (!exists) {
+          delete next[photoId];
+          updated = true;
+        }
+      });
+
+      return updated ? next : prev;
     });
-
-    setPhotoCodeMap(newMap);
-  }, [uploads, codes]);
-
-  // Auto-match on initial load and when uploads/codes change
-  useEffect(() => {
-    autoMatchPhotos();
-  }, [autoMatchPhotos]);
+    if (revivedPhotos.size > 0) {
+      setAutoDismissedPhotos(prev => {
+        const next = { ...prev };
+        let changed = false;
+        revivedPhotos.forEach(id => {
+          if (next[id]) {
+            delete next[id];
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [uploads, codes, autoDismissedPhotos]);
 
   // Group photos by code
   const timelineItems = useMemo(() => {
@@ -95,7 +175,7 @@ const TimelineMatchPanel = () => {
       .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 
     sortedCodes.forEach(code => {
-      const matchedPhotos = uploads.filter(u => photoCodeMap[u.id] === code.id);
+      const matchedPhotos = uploads.filter(u => photoAssignments[u.id]?.codeId === code.id);
       items.push({
         type: 'code',
         code,
@@ -105,7 +185,7 @@ const TimelineMatchPanel = () => {
     });
 
     // Add unmatched photos
-    const unmatchedPhotos = uploads.filter(u => !photoCodeMap[u.id]);
+    const unmatchedPhotos = uploads.filter(u => !photoAssignments[u.id]);
     if (unmatchedPhotos.length > 0) {
       items.push({
         type: 'unmatched',
@@ -115,7 +195,13 @@ const TimelineMatchPanel = () => {
     }
 
     return items;
-  }, [codes, uploads, photoCodeMap]);
+  }, [codes, uploads, photoAssignments]);
+
+  const matchedCount = useMemo(() => Object.keys(photoAssignments).length, [photoAssignments]);
+  const autoMatchedCount = useMemo(
+    () => Object.values(photoAssignments).filter((assignment) => assignment.isAuto).length,
+    [photoAssignments]
+  );
 
   // Handle file upload
   const handleFileInput = (e) => {
@@ -165,15 +251,11 @@ const TimelineMatchPanel = () => {
       const photoId = active.id;
       const newCodeId = over.id === 'unmatched' ? null : over.id;
 
-      setPhotoCodeMap(prev => {
-        const newMap = { ...prev };
-        if (newCodeId) {
-          newMap[photoId] = newCodeId;
-        } else {
-          delete newMap[photoId];
-        }
-        return newMap;
-      });
+      if (newCodeId) {
+        assignPhotoToCode(photoId, newCodeId, { isAuto: false });
+      } else {
+        clearAssignment(photoId);
+      }
     }
 
     setActiveId(null);
@@ -181,7 +263,7 @@ const TimelineMatchPanel = () => {
 
   // Upload all matched photos
   const handleUploadAll = async () => {
-    if (Object.keys(photoCodeMap).length === 0) {
+    if (Object.keys(photoAssignments).length === 0) {
       alert('No photos matched to codes');
       return;
     }
@@ -200,7 +282,10 @@ const TimelineMatchPanel = () => {
       }
 
       // Upload each matched photo
-      for (const [photoId, codeId] of Object.entries(photoCodeMap)) {
+      for (const [photoId, assignment] of Object.entries(photoAssignments)) {
+        const codeId = assignment.codeId;
+        if (!codeId) continue;
+
         const upload = uploads.find(u => u.id === photoId);
         if (!upload) continue;
 
@@ -284,7 +369,9 @@ const TimelineMatchPanel = () => {
       await fetchCodes();
 
       // Clear photo map
-      setPhotoCodeMap({});
+      setPhotoAssignments({});
+      setAutoDismissedPhotos({});
+      setSamplePhotos({});
 
       alert('All photos uploaded successfully!');
     } catch (error) {
@@ -305,6 +392,34 @@ const TimelineMatchPanel = () => {
     }).format(new Date(date));
   };
 
+  const formatCaptureWindow = (photos) => {
+    const captureTimes = photos
+      .map(photo => (photo.exif?.DateTimeOriginal ? new Date(photo.exif.DateTimeOriginal) : null))
+      .filter(Boolean)
+      .sort((a, b) => a - b);
+
+    if (captureTimes.length === 0) return null;
+
+    const formatLabel = (date) =>
+      new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(date);
+
+    const first = captureTimes[0];
+    const last = captureTimes[captureTimes.length - 1];
+
+    if (first.toDateString() !== last.toDateString()) {
+      return `${formatTime(first)} → ${formatTime(last)}`;
+    }
+
+    if (first.getTime() === last.getTime()) {
+      return formatLabel(first);
+    }
+
+    return `${formatLabel(first)} – ${formatLabel(last)}`;
+  };
+
   const activePhoto = activeId ? uploads.find(u => u.id === activeId) : null;
 
   return (
@@ -317,12 +432,26 @@ const TimelineMatchPanel = () => {
       <div className="bg-white rounded-3xl shadow-lg p-6">
         {/* Header */}
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">
-            Timeline Upload & Match
-          </h2>
-          <p className="text-gray-600">
-            Photos are auto-matched by time. Drag to adjust.
-          </p>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-1">
+                Timeline Upload & Match
+              </h2>
+              <p className="text-gray-600">
+                Snappo looks at capture times to suggest the right codes — adjust anything before uploading.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
+                Matched: {matchedCount}
+              </span>
+              {autoMatchedCount > 0 && (
+                <span className="px-3 py-1 rounded-full bg-teal/10 text-sm font-semibold text-teal">
+                  Auto: {autoMatchedCount}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Upload Area */}
@@ -348,6 +477,7 @@ const TimelineMatchPanel = () => {
               multiple
               accept="image/*"
               onChange={handleFileInput}
+              ref={fileInputRef}
               className="hidden"
               id="timeline-photo-upload"
             />
@@ -368,9 +498,9 @@ const TimelineMatchPanel = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-800">
-                Timeline ({Object.keys(photoCodeMap).length} matched)
+                Timeline ({matchedCount} matched)
               </h3>
-              {Object.keys(photoCodeMap).length > 0 && (
+              {matchedCount > 0 && (
                 <motion.button
                   onClick={handleUploadAll}
                   disabled={uploading}
@@ -378,18 +508,23 @@ const TimelineMatchPanel = () => {
                   whileTap={{ scale: uploading ? 1 : 0.95 }}
                   className="px-6 py-2 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-xl shadow-lg disabled:opacity-50"
                 >
-                  {uploading ? 'Uploading...' : `Upload All (${Object.keys(photoCodeMap).length})`}
+                  {uploading ? 'Uploading...' : `Upload All (${matchedCount})`}
                 </motion.button>
               )}
             </div>
 
             {/* Timeline Items - Will be implemented in next step with drag & drop */}
             <div className="space-y-4">
-              {timelineItems.map((item, index) => (
+              {timelineItems.map((item) => (
                 <TimelineItem
                   key={item.type === 'code' ? item.code.id : 'unmatched'}
                   item={item}
                   formatTime={formatTime}
+                  formatCaptureWindow={formatCaptureWindow}
+                  samplePhotos={samplePhotos}
+                  toggleSample={toggleSample}
+                  assignments={photoAssignments}
+                  onClearAssignment={clearAssignment}
                 />
               ))}
             </div>
@@ -424,7 +559,7 @@ const TimelineMatchPanel = () => {
 };
 
 // Draggable Photo Component
-const DraggablePhoto = ({ photo, isSample, onSampleToggle }) => {
+const DraggablePhoto = ({ photo, isSample, onSampleToggle, assignment, onClearAssignment }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: photo.id,
   });
@@ -452,6 +587,19 @@ const DraggablePhoto = ({ photo, isSample, onSampleToggle }) => {
         />
       </div>
 
+      {assignment && onClearAssignment && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClearAssignment(photo.id);
+          }}
+          className="absolute top-2 left-2 bg-white/90 text-gray-700 text-xs font-bold px-2 py-1 rounded-full shadow hover:bg-white"
+        >
+          ✕
+        </button>
+      )}
+
       {/* Sample checkbox overlay */}
       <div
         className="absolute top-2 right-2 z-10"
@@ -471,35 +619,39 @@ const DraggablePhoto = ({ photo, isSample, onSampleToggle }) => {
           <span className="text-xs font-semibold text-gray-700">Sample</span>
         </label>
       </div>
-    </div>
-  );
-};
 
-// Droppable Zone Component
-const DroppableZone = ({ id, children, isOver }) => {
-  const { setNodeRef } = useDroppable({
-    id,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`transition-all ${
-        isOver ? 'ring-2 ring-teal bg-teal/5' : ''
-      }`}
-    >
-      {children}
+      {assignment?.isAuto && (
+        <div className="absolute bottom-2 left-2 text-[11px] font-semibold text-teal bg-white/90 px-2 py-0.5 rounded-full shadow">
+          Auto
+        </div>
+      )}
     </div>
   );
 };
 
 // Timeline Item Component with drag & drop
-const TimelineItem = ({ item, formatTime }) => {
+const TimelineItem = ({
+  item,
+  formatTime,
+  formatCaptureWindow,
+  samplePhotos,
+  toggleSample,
+  assignments,
+  onClearAssignment,
+}) => {
   const { isOver, setNodeRef } = useDroppable({
     id: item.type === 'code' ? item.code.id : 'unmatched',
   });
 
   if (item.type === 'code') {
+    const captureHint = formatCaptureWindow(item.photos);
+    const autoPhotos = item.photos.filter(photo => assignments[photo.id]?.isAuto);
+    const tags = Array.isArray(item.code.tags)
+      ? item.code.tags
+      : typeof item.code.tags === 'string'
+        ? item.code.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        : [];
+
     return (
       <div className="relative pl-8 border-l-2 border-gray-200">
         <div className="absolute left-0 top-2 w-4 h-4 -ml-2 bg-teal rounded-full border-2 border-white shadow"></div>
@@ -510,23 +662,49 @@ const TimelineItem = ({ item, formatTime }) => {
             isOver ? 'ring-2 ring-teal bg-teal/5' : ''
           }`}
         >
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-xs text-gray-500 mb-1">
-                {formatTime(item.time)}
+          <div className="flex flex-col gap-3 mb-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs text-gray-500 mb-1 flex items-center gap-2">
+                  <span>{formatTime(item.time)}</span>
+                  {captureHint && (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                      ⏱ {captureHint}
+                    </span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="font-mono text-lg font-bold text-gray-800">
+                    {item.code.code}
+                  </h4>
+                  {item.code.note && (
+                    <span className="text-sm text-gray-600">{item.code.note}</span>
+                  )}
+                </div>
+                {tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2 py-0.5 text-xs font-semibold text-gray-600 bg-white border border-gray-200 rounded-full"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <h4 className="font-mono text-lg font-bold text-gray-800">
-                  {item.code.code}
-                </h4>
-                {item.code.note && (
-                  <span className="text-sm text-gray-600">- {item.code.note}</span>
+              <div className="text-right">
+                <span className="text-sm text-gray-500 block">
+                  {item.photos.length} photo{item.photos.length !== 1 ? 's' : ''}
+                </span>
+                {autoPhotos.length > 0 && (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-teal bg-teal/10 px-2 py-0.5 rounded-full mt-1">
+                    🤖 Auto matched {autoPhotos.length}
+                  </span>
                 )}
               </div>
             </div>
-            <span className="text-sm text-gray-500">
-              {item.photos.length} photo{item.photos.length !== 1 ? 's' : ''}
-            </span>
           </div>
 
           {/* Draggable Photos */}
@@ -538,6 +716,8 @@ const TimelineItem = ({ item, formatTime }) => {
                   photo={photo}
                   isSample={samplePhotos[photo.id] || false}
                   onSampleToggle={toggleSample}
+                  assignment={assignments[photo.id]}
+                  onClearAssignment={onClearAssignment}
                 />
               ))}
             </div>
@@ -568,6 +748,9 @@ const TimelineItem = ({ item, formatTime }) => {
             Unmatched Photos ({item.photos.length})
           </h4>
         </div>
+        <p className="text-sm text-gray-600 mb-3">
+          These files had no capture time or outside the window. Drag them onto the right timeline card or remove matches using the ✕ icon.
+        </p>
 
         {item.photos.length > 0 ? (
           <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
@@ -577,6 +760,8 @@ const TimelineItem = ({ item, formatTime }) => {
                 photo={photo}
                 isSample={samplePhotos[photo.id] || false}
                 onSampleToggle={toggleSample}
+                assignment={assignments[photo.id]}
+                onClearAssignment={onClearAssignment}
               />
             ))}
           </div>

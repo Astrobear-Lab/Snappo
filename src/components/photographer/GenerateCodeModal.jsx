@@ -33,6 +33,8 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
         .insert([
           {
             code: codeData,
+            note: formData.note.trim() || null,
+            tags: tags.length > 0 ? tags : null,
             expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(), // 72 hours
             shared_at: new Date().toISOString(), // Set shared_at immediately as code is shareable
           },

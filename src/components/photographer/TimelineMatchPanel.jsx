@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -6,7 +6,6 @@ import { supabase } from '../../lib/supabase';
 import { blurImage } from '../../lib/imageUtils';
 import {
   DndContext,
-  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
@@ -18,17 +17,27 @@ import {
 import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
+import PhotoMetadataAccordion from './PhotoMetadataAccordion';
 
 const TimelineMatchPanel = () => {
   const { user } = useAuth();
-  const { uploads, codes, uploadPhotos, fetchCodes } = usePhotographer();
+  const { uploads, codes, uploadPhotos, fetchCodes, removeUploads } = usePhotographer();
 
   const [isDragging, setIsDragging] = useState(false);
   const [photoAssignments, setPhotoAssignments] = useState({}); // { photoId: { codeId, isAuto, matchedAt } }
-  const [activeId, setActiveId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
   const [autoDismissedPhotos, setAutoDismissedPhotos] = useState({});
+  const [detailPhoto, setDetailPhoto] = useState(null);
+
+  const serializeExif = useCallback((exif) => {
+    if (!exif) return null;
+    return JSON.parse(
+      JSON.stringify(exif, (key, value) =>
+        value instanceof Date ? value.toISOString() : value
+      )
+    );
+  }, []);
 
   const fileInputRef = useRef(null);
 
@@ -117,7 +126,7 @@ const TimelineMatchPanel = () => {
           const codeTime = new Date(code.createdAt);
           const diff = Math.abs(photoTime - codeTime);
 
-          if (diff < 4 * 60 * 60 * 1000 && diff < minDiff) {
+          if (diff < 24 * 60 * 60 * 1000 && diff < minDiff) {
             minDiff = diff;
             closestCode = code;
           }
@@ -240,10 +249,6 @@ const TimelineMatchPanel = () => {
   );
 
   // Drag handlers
-  const handleDragStart = (event) => {
-    setActiveId(event.active.id);
-  };
-
   const handleDragEnd = (event) => {
     const { active, over } = event;
 
@@ -258,7 +263,6 @@ const TimelineMatchPanel = () => {
       }
     }
 
-    setActiveId(null);
   };
 
   // Upload all matched photos
@@ -269,6 +273,7 @@ const TimelineMatchPanel = () => {
     }
 
     setUploading(true);
+    const uploadedPhotoIds = []; // Track successfully uploaded photo IDs
     try {
       // Get photographer profile
       const { data: profile, error: profileError } = await supabase
@@ -310,6 +315,11 @@ const TimelineMatchPanel = () => {
 
         if (blurredError) throw blurredError;
 
+        const capturedAt = upload.exif?.DateTimeOriginal
+          ? new Date(upload.exif.DateTimeOriginal).toISOString()
+          : null;
+        const exifMetadata = serializeExif(upload.exif);
+
         // Create photo record
         const { data: photoData, error: photoError } = await supabase
           .from('photos')
@@ -322,6 +332,8 @@ const TimelineMatchPanel = () => {
               file_size: upload.file.size,
               status: 'approved',
               is_sample: samplePhotos[photoId] || false, // Use sample status from state
+              captured_at: capturedAt,
+              exif_metadata: exifMetadata,
             },
           ])
           .select()
@@ -363,10 +375,16 @@ const TimelineMatchPanel = () => {
 
           if (updateError) console.error('Failed to update timestamps:', updateError);
         }
+
+        // Add to successfully uploaded photos
+        uploadedPhotoIds.push(photoId);
       }
 
       // Refresh codes
       await fetchCodes();
+
+      // Remove successfully uploaded photos from uploads list
+      removeUploads(uploadedPhotoIds);
 
       // Clear photo map
       setPhotoAssignments({});
@@ -420,13 +438,10 @@ const TimelineMatchPanel = () => {
     return `${formatLabel(first)} – ${formatLabel(last)}`;
   };
 
-  const activePhoto = activeId ? uploads.find(u => u.id === activeId) : null;
-
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
       <div className="bg-white rounded-3xl shadow-lg p-6">
@@ -525,6 +540,7 @@ const TimelineMatchPanel = () => {
                   toggleSample={toggleSample}
                   assignments={photoAssignments}
                   onClearAssignment={clearAssignment}
+                  onViewDetails={setDetailPhoto}
                 />
               ))}
             </div>
@@ -542,24 +558,54 @@ const TimelineMatchPanel = () => {
         )}
       </div>
 
-      {/* Drag Overlay */}
-      <DragOverlay>
-        {activePhoto ? (
-          <div className="w-20 h-20 rounded-lg overflow-hidden shadow-2xl border-2 border-teal">
-            <img
-              src={activePhoto.url}
-              alt="Dragging"
-              className="w-full h-full object-cover opacity-80"
-            />
-          </div>
-        ) : null}
-      </DragOverlay>
+      <AnimatePresence>
+        {detailPhoto && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            onClick={() => setDetailPhoto(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <h3 className="text-xl font-bold text-gray-800">Photo Details</h3>
+                <button
+                  type="button"
+                  onClick={() => setDetailPhoto(null)}
+                  className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-2xl text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="grid md:grid-cols-2 gap-6 p-6">
+                <div className="rounded-2xl overflow-hidden bg-gray-100">
+                  <img
+                    src={detailPhoto.url}
+                    alt="Selected"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <PhotoMetadataAccordion photo={detailPhoto} exif={detailPhoto.exif} />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </DndContext>
   );
 };
 
 // Draggable Photo Component
-const DraggablePhoto = ({ photo, isSample, onSampleToggle, assignment, onClearAssignment }) => {
+const DraggablePhoto = ({ photo, isSample, onSampleToggle, assignment, onClearAssignment, onViewDetails }) => {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: photo.id,
   });
@@ -620,6 +666,19 @@ const DraggablePhoto = ({ photo, isSample, onSampleToggle, assignment, onClearAs
         </label>
       </div>
 
+      {onViewDetails && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onViewDetails(photo);
+          }}
+          className="absolute bottom-2 right-2 bg-white/90 text-gray-700 text-xs font-semibold px-2 py-1 rounded-full shadow hover:bg-white"
+        >
+          ℹ️
+        </button>
+      )}
+
       {assignment?.isAuto && (
         <div className="absolute bottom-2 left-2 text-[11px] font-semibold text-teal bg-white/90 px-2 py-0.5 rounded-full shadow">
           Auto
@@ -638,6 +697,7 @@ const TimelineItem = ({
   toggleSample,
   assignments,
   onClearAssignment,
+  onViewDetails,
 }) => {
   const { isOver, setNodeRef } = useDroppable({
     id: item.type === 'code' ? item.code.id : 'unmatched',
@@ -718,6 +778,7 @@ const TimelineItem = ({
                   onSampleToggle={toggleSample}
                   assignment={assignments[photo.id]}
                   onClearAssignment={onClearAssignment}
+                  onViewDetails={onViewDetails}
                 />
               ))}
             </div>
@@ -762,6 +823,7 @@ const TimelineItem = ({
                 onSampleToggle={toggleSample}
                 assignment={assignments[photo.id]}
                 onClearAssignment={onClearAssignment}
+                onViewDetails={onViewDetails}
               />
             ))}
           </div>

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
 import { useAuth } from '../../contexts/AuthContext';
 import GenerateCodeModal from './GenerateCodeModal';
@@ -16,6 +16,16 @@ const PhotographerDashboardMain = () => {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedCode, setSelectedCode] = useState(null);
   const [showCodeDetail, setShowCodeDetail] = useState(false);
+
+  // Update selectedCode when codes array changes (e.g., after sample status update)
+  useEffect(() => {
+    if (selectedCode) {
+      const updatedCode = codes.find(c => c.id === selectedCode.id);
+      if (updatedCode) {
+        setSelectedCode(updatedCode);
+      }
+    }
+  }, [codes, selectedCode]);
 
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '🏠' },

@@ -8,34 +8,59 @@ import { supabase } from '../../lib/supabase';
 
 const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const { extendCode, invalidateCode, fetchCodes, deleteCode } = usePhotographer();
+  const [localCode, setLocalCode] = useState(code);
   const [photos, setPhotos] = useState(code?.photos || []);
+  const [loadingPhotoId, setLoadingPhotoId] = useState(null);
+  const [isEditingMetadata, setIsEditingMetadata] = useState(false);
+  const [editedNote, setEditedNote] = useState(code?.note || '');
+  const [editedTags, setEditedTags] = useState(code?.tags?.join(', ') || '');
 
   useEffect(() => {
-    setPhotos(code?.photos || []);
+    if (code) {
+      setLocalCode(code);
+      setPhotos(code?.photos || []);
+      setEditedNote(code?.note || '');
+      setEditedTags(code?.tags?.join(', ') || '');
+      setIsEditingMetadata(false);
+    }
   }, [code]);
 
   if (!code) return null;
 
   // Toggle sample status for a photo
   const togglePhotoSample = async (photoId, currentStatus) => {
+    console.log('[CodeDetailDrawer] togglePhotoSample called:', { photoId, currentStatus, newStatus: !currentStatus });
+
+    setLoadingPhotoId(photoId);
+
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('photos')
         .update({ is_sample: !currentStatus })
-        .eq('id', photoId);
+        .eq('id', photoId)
+        .select();
+
+      console.log('[CodeDetailDrawer] Supabase update result:', { data, error });
 
       if (error) throw error;
 
       // Refresh codes to get updated data
+      console.log('[CodeDetailDrawer] Calling fetchCodes...');
       await fetchCodes();
+
+      console.log('[CodeDetailDrawer] Updating local photos state...');
       setPhotos((prev) =>
         prev.map((photo) =>
           photo.id === photoId ? { ...photo, isSample: !currentStatus } : photo
         )
       );
+
+      console.log('[CodeDetailDrawer] Sample status updated successfully!');
     } catch (err) {
-      console.error('Failed to update sample status:', err);
+      console.error('[CodeDetailDrawer] Failed to update sample status:', err);
       alert('Failed to update sample status. Please try again.');
+    } finally {
+      setLoadingPhotoId(null);
     }
   };
 
@@ -46,39 +71,39 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const timeline = [
     {
       label: 'Created',
-      time: code.createdAt,
+      time: localCode.createdAt,
       icon: '✨',
       active: true,
     },
     {
       label: 'Shared',
-      time: code.sharedAt,
+      time: localCode.sharedAt,
       icon: '📤',
-      active: !!code.sharedAt,
+      active: !!localCode.sharedAt,
     },
     {
       label: 'Uploaded',
-      time: code.uploadedAt,
+      time: localCode.uploadedAt,
       icon: '📸',
-      active: !!code.uploadedAt,
+      active: !!localCode.uploadedAt,
     },
     {
       label: 'Published',
-      time: code.publishedAt,
+      time: localCode.publishedAt,
       icon: '✓',
-      active: !!code.publishedAt,
+      active: !!localCode.publishedAt,
     },
     {
       label: 'Viewed',
-      time: code.views > 0 ? code.createdAt : null,
+      time: localCode.views > 0 ? localCode.createdAt : null,
       icon: '👁',
-      active: code.views > 0,
+      active: localCode.views > 0,
     },
     {
       label: 'Unlocked',
-      time: code.unlockedAt || null,
+      time: localCode.unlockedAt || null,
       icon: '🔓',
-      active: code.status === 'unlocked',
+      active: localCode.status === 'unlocked',
     },
   ];
 
@@ -103,13 +128,13 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
     return `${days}d ago`;
   };
 
-  const shareUrl = `${window.location.origin}/photo/${code.code}`;
+  const shareUrl = `${window.location.origin}/photo/${localCode.code}`;
 
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
         title: 'Photo Code',
-        text: `Check out my photos! Use code: ${code.code}`,
+        text: `Check out my photos! Use code: ${localCode.code}`,
         url: shareUrl,
       });
     } else {
@@ -123,12 +148,50 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
     }
 
     try {
-      await deleteCode(code.id);
+      await deleteCode(localCode.id);
       onClose();
     } catch (error) {
       console.error('Failed to delete code:', error);
       alert('Failed to delete code. Please try again.');
     }
+  };
+
+  const handleSaveMetadata = async () => {
+    try {
+      const tags = editedTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+
+      const { error } = await supabase
+        .from('photo_codes')
+        .update({
+          note: editedNote.trim() || null,
+          tags: tags.length > 0 ? tags : null,
+        })
+        .eq('id', localCode.id);
+
+      if (error) throw error;
+
+      // Update local code state immediately
+      setLocalCode({
+        ...localCode,
+        note: editedNote.trim() || '',
+        tags: tags,
+      });
+
+      await fetchCodes();
+      setIsEditingMetadata(false);
+    } catch (error) {
+      console.error('Failed to update metadata:', error);
+      alert('Failed to update metadata. Please try again.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedNote(localCode?.note || '');
+    setEditedTags(localCode?.tags?.join(', ') || '');
+    setIsEditingMetadata(false);
   };
 
   return (
@@ -155,21 +218,100 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
             {/* Header */}
             <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10">
               <div className="flex items-start justify-between mb-4">
-                <div>
+                <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h2 className="font-mono text-3xl font-bold text-gray-800">
-                      {code.code}
+                      {localCode.code}
                     </h2>
-                    <StatusPill status={code.status} />
+                    <StatusPill status={localCode.status} />
                   </div>
-                  {code.note && (
-                    <p className="text-gray-600">{code.note}</p>
+
+                  {/* Metadata Display/Edit */}
+                  {!isEditingMetadata ? (
+                    <div className="space-y-2">
+                      {localCode.note && (
+                        <p className="text-gray-600">{localCode.note}</p>
+                      )}
+                      {localCode.tags && localCode.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {localCode.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-1 bg-teal/10 text-teal text-xs font-semibold rounded-lg"
+                            >
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <motion.button
+                        onClick={() => setIsEditingMetadata(true)}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        className="text-sm text-teal hover:text-teal/80 font-semibold mt-2"
+                      >
+                        ✏️ Edit note & tags
+                      </motion.button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3 mt-3">
+                      {/* Note Edit */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">
+                          Note
+                        </label>
+                        <input
+                          type="text"
+                          value={editedNote}
+                          onChange={(e) => setEditedNote(e.target.value)}
+                          placeholder="e.g., Sarah & Tom wedding"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:border-teal focus:ring-2 focus:ring-teal/20 outline-none transition-all text-sm"
+                        />
+                      </div>
+
+                      {/* Tags Edit */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">
+                          Tags
+                        </label>
+                        <input
+                          type="text"
+                          value={editedTags}
+                          onChange={(e) => setEditedTags(e.target.value)}
+                          placeholder="e.g., wedding, outdoor, portrait"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:border-teal focus:ring-2 focus:ring-teal/20 outline-none transition-all text-sm"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Separate tags with commas
+                        </p>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2">
+                        <motion.button
+                          onClick={handleSaveMetadata}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex-1 px-4 py-2 bg-teal text-white font-semibold rounded-lg hover:bg-teal/90 transition-colors text-sm"
+                        >
+                          💾 Save
+                        </motion.button>
+                        <motion.button
+                          onClick={handleCancelEdit}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                        >
+                          Cancel
+                        </motion.button>
+                      </div>
+                    </div>
                   )}
                 </div>
 
                 <button
                   onClick={onClose}
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                  className="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors flex-shrink-0 ml-4"
                 >
                   <span className="text-2xl text-gray-600">×</span>
                 </button>
@@ -179,19 +321,19 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center p-3 bg-gray-50 rounded-xl">
                   <div className="text-2xl font-bold text-gray-800">
-                    {code.photos.length}
+                    {localCode.photos.length}
                   </div>
                   <div className="text-xs text-gray-600">Photos</div>
                 </div>
                 <div className="text-center p-3 bg-gray-50 rounded-xl">
                   <div className="text-2xl font-bold text-gray-800">
-                    {code.views}
+                    {localCode.views}
                   </div>
                   <div className="text-xs text-gray-600">Views</div>
                 </div>
                 <div className="text-center p-3 bg-teal/10 rounded-xl">
                   <div className="text-2xl font-bold text-teal">
-                    {code.unlocks}
+                    {localCode.unlocks}
                   </div>
                   <div className="text-xs text-teal">Unlocks</div>
                 </div>
@@ -206,8 +348,8 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   Share this code
                 </h3>
                 <QRDisplay
-                  code={code.code}
-                  link={`${window.location.origin}/photo/${code.code}`}
+                  code={localCode.code}
+                  link={`${window.location.origin}/photo/${localCode.code}`}
                   size="large"
                 />
 
@@ -221,10 +363,20 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                       className="flex-1 px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700"
                     />
                     <motion.button
+                      onClick={() => window.open(shareUrl, '_blank')}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
+                      title="Open link"
+                    >
+                      🔗
+                    </motion.button>
+                    <motion.button
                       onClick={handleShare}
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       className="px-4 py-2 bg-teal text-white font-semibold rounded-lg hover:bg-teal/90 transition-colors"
+                      title="Share"
                     >
                       📤
                     </motion.button>
@@ -298,15 +450,26 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                           {/* Sample toggle button */}
                           <motion.button
                             onClick={() => togglePhotoSample(photo.id, photo.isSample)}
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className={`absolute top-2 right-2 px-3 py-1 rounded-full font-semibold text-xs shadow-lg transition-all ${
+                            disabled={loadingPhotoId === photo.id}
+                            whileHover={{ scale: loadingPhotoId === photo.id ? 1 : 1.05 }}
+                            whileTap={{ scale: loadingPhotoId === photo.id ? 1 : 0.95 }}
+                            className={`absolute top-2 right-2 px-3 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 ${
                               photo.isSample
                                 ? 'bg-teal text-white'
                                 : 'bg-white/90 text-gray-700 hover:bg-white'
-                            }`}
+                            } ${loadingPhotoId === photo.id ? 'opacity-70 cursor-wait' : ''}`}
                           >
-                            {photo.isSample ? '✨ Sample' : 'Mark as Sample'}
+                            {loadingPhotoId === photo.id ? (
+                              <>
+                                <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                                <span>Updating...</span>
+                              </>
+                            ) : (
+                              <span>{photo.isSample ? '✨ Sample' : 'Mark as Sample'}</span>
+                            )}
                           </motion.button>
                         </div>
 
@@ -324,12 +487,12 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   Recent Activity
                 </h3>
                 <div className="space-y-3">
-                  {code.views > 0 && (
+                  {localCode.views > 0 && (
                     <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl">
                       <div className="text-2xl">👁</div>
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-gray-800">
-                          Viewed {code.views} time{code.views > 1 ? 's' : ''}
+                          Viewed {localCode.views} time{localCode.views > 1 ? 's' : ''}
                         </div>
                         <div className="text-xs text-gray-500">
                           Last viewed 5m ago
@@ -338,7 +501,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                     </div>
                   )}
 
-                  {code.status === 'unlocked' && (
+                  {localCode.status === 'unlocked' && (
                     <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
                       <div className="text-2xl">🔓</div>
                       <div className="flex-1">
@@ -346,21 +509,21 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                           Unlocked
                         </div>
                         <div className="text-xs text-gray-500">
-                          {formatTimeAgo(code.unlockedAt)} - Payout pending
+                          {formatTimeAgo(localCode.unlockedAt)} - Payout pending
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {code.photos.length > 0 && (
+                  {localCode.photos.length > 0 && (
                     <div className="flex items-center gap-3 p-3 bg-teal/10 rounded-xl">
                       <div className="text-2xl">📸</div>
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-gray-800">
-                          {code.photos.length} photo{code.photos.length > 1 ? 's' : ''} added
+                          {localCode.photos.length} photo{localCode.photos.length > 1 ? 's' : ''} added
                         </div>
                         <div className="text-xs text-gray-500">
-                          {formatTimeAgo(code.createdAt)}
+                          {formatTimeAgo(localCode.createdAt)}
                         </div>
                       </div>
                     </div>
@@ -370,9 +533,9 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
 
               {/* Actions */}
               <div className="space-y-3 pt-4 border-t border-gray-200">
-                {code.status !== 'expired' && (
+                {localCode.status !== 'expired' && (
                   <motion.button
-                    onClick={() => extendCode(code.id, 24)}
+                    onClick={() => extendCode(localCode.id, 24)}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full py-3 bg-yellow-500 text-white font-semibold rounded-xl hover:bg-yellow-600 transition-colors"
@@ -383,7 +546,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
 
                 <motion.button
                   onClick={() => {
-                    invalidateCode(code.id);
+                    invalidateCode(localCode.id);
                     onClose();
                   }}
                   whileHover={{ scale: 1.02 }}

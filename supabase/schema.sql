@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS public.photos (
   thumbnail_url TEXT,
   file_size INTEGER,
   is_sample BOOLEAN DEFAULT FALSE, -- If true, shows original even before payment
+  exif_metadata JSONB,
 
   -- Photo metadata
   title TEXT,
@@ -159,6 +160,10 @@ CREATE POLICY "Photographers can view own photos"
 CREATE TABLE IF NOT EXISTS public.photo_codes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   code TEXT UNIQUE NOT NULL,
+
+  -- Metadata
+  note TEXT,
+  tags TEXT[],
 
   -- Redemption
   is_redeemed BOOLEAN DEFAULT FALSE,

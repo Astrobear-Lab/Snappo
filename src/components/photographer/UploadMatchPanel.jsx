@@ -25,6 +25,14 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
 
   const unmatchedUploads = uploads.filter((u) => !u.matched);
   const [uploading, setUploading] = useState(false);
+  const serializeExif = useCallback((exif) => {
+    if (!exif) return null;
+    return JSON.parse(
+      JSON.stringify(exif, (key, value) =>
+        value instanceof Date ? value.toISOString() : value
+      )
+    );
+  }, []);
 
   // Handle actual upload to Supabase and match to code
   const handleUploadAndMatch = useCallback(async () => {
@@ -103,6 +111,11 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
 
         console.log('[UploadMatchPanel] Blurred path:', blurredData.path);
 
+        const capturedAt = upload.exif?.DateTimeOriginal
+          ? new Date(upload.exif.DateTimeOriginal).toISOString()
+          : null;
+        const exifMetadata = serializeExif(upload.exif);
+
         // Create photo record
         console.log('[UploadMatchPanel] Creating photo record in database...');
         const { data: photoData, error: photoError } = await supabase
@@ -116,6 +129,8 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
               file_size: upload.file.size,
               status: 'pending', // Will be approved later
               is_sample: samplePhotos[photoId] || false, // Use sample status from state
+              captured_at: capturedAt,
+              exif_metadata: exifMetadata,
             },
           ])
           .select()
@@ -203,7 +218,7 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
       console.log('[UploadMatchPanel] Upload process finished (success or failure)');
       setUploading(false);
     }
-  }, [selectedPhotos, selectedCode, uploads, user, fetchCodes, preselectedCode]);
+  }, [selectedPhotos, selectedCode, uploads, user, fetchCodes, preselectedCode, serializeExif]);
 
   const handleDragOver = useCallback((e) => {
     e.preventDefault();

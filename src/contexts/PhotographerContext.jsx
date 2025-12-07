@@ -196,6 +196,8 @@ export const PhotographerProvider = ({ children }) => {
         .from('photo_codes')
         .select(`
           *,
+          note,
+          tags,
           code_photos (
             photos (
               id,
@@ -205,7 +207,8 @@ export const PhotographerProvider = ({ children }) => {
               file_url,
               watermarked_url,
               is_sample,
-              created_at
+              created_at,
+              exif_metadata
             )
           )
         `)
@@ -254,8 +257,8 @@ export const PhotographerProvider = ({ children }) => {
           uploadedAt: code.uploaded_at ? new Date(code.uploaded_at) : null,
           publishedAt: code.published_at ? new Date(code.published_at) : null,
           expiresAt: new Date(code.expires_at),
-          tags: [], // Could be stored separately if needed
-          note: '', // Could be stored separately if needed
+          tags: code.tags || [],
+          note: code.note || '',
           photos: await Promise.all(
             photos.map(async (photo) => {
               const originalUrl = await buildSignedUrl('photos-original', photo.file_url);
@@ -268,7 +271,7 @@ export const PhotographerProvider = ({ children }) => {
                 blurred_url: blurredUrl,
                 watermarked: !originalUrl && Boolean(blurredUrl),
                 isSample: photo.is_sample || false,
-                exif: null,
+                exif: photo.exif_metadata || null,
                 file: null,
               };
             })
@@ -530,6 +533,11 @@ export const PhotographerProvider = ({ children }) => {
     }
   }, [addNotification]);
 
+  // Remove uploaded photos from the uploads list
+  const removeUploads = useCallback((photoIds) => {
+    setUploads((prev) => prev.filter((upload) => !photoIds.includes(upload.id)));
+  }, []);
+
   const value = {
     codes,
     uploads,
@@ -546,6 +554,7 @@ export const PhotographerProvider = ({ children }) => {
     invalidateCode,
     fetchCodes,
     deleteCode,
+    removeUploads,
   };
 
   return (

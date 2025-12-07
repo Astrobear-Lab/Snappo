@@ -11,15 +11,56 @@ const PhotoView = () => {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pendingUpload, setPendingUpload] = useState(false);
   const [photoData, setPhotoData] = useState(null);
   const [allPhotos, setAllPhotos] = useState([]);
   const [codeData, setCodeData] = useState(null);
   const [purchasing, setPurchasing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
+  const [timeRemaining, setTimeRemaining] = useState('');
 
   // Mock payment mode (true = 실제 결제 없이 테스트)
   const MOCK_PAYMENT = true;
+
+  // Real-time countdown timer
+  useEffect(() => {
+    if (!codeData?.expires_at) return;
+
+    const updateCountdown = () => {
+      const now = new Date();
+      const expiresAt = new Date(codeData.expires_at);
+      const diff = expiresAt - now;
+
+      if (diff <= 0) {
+        setTimeRemaining('Expired');
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+      // Helper function to pad numbers with leading zeros
+      const pad = (num) => String(num).padStart(2, '0');
+
+      // Digital clock format
+      if (days > 0) {
+        setTimeRemaining(`${days} day${days > 1 ? 's' : ''} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
+      } else if (hours > 0) {
+        setTimeRemaining(`${pad(hours)}:${pad(minutes)}:${pad(seconds)}`);
+      } else {
+        setTimeRemaining(`${pad(minutes)}:${pad(seconds)}`);
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+
+    return () => clearInterval(interval);
+  }, [codeData]);
 
   useEffect(() => {
     if (code) {
@@ -100,7 +141,8 @@ const PhotoView = () => {
       }
 
       if (!codePhotosData || codePhotosData.length === 0) {
-        setError('No photos found for this code.');
+        // Photos not uploaded yet - show pending state instead of error
+        setPendingUpload(true);
         setLoading(false);
         return;
       }
@@ -108,19 +150,34 @@ const PhotoView = () => {
       // Use all photos
       const photos = codePhotosData.map(cp => cp.photos);
 
-      // 4. Get public URLs and determine what to show
-      const photosWithUrls = photos.map(photo => {
+      // 4. Get URLs and determine what to show (using signed URLs for private originals)
+      const photosWithUrls = await Promise.all(photos.map(async (photo) => {
         // If it's a sample or already purchased, show original
         const showOriginal = photo.is_sample || photoCodeData.is_purchased;
 
         if (showOriginal) {
-          const { data: originalUrl } = supabase.storage
+          // Use signed URL for private bucket (1 hour expiry)
+          const { data: originalUrl, error } = await supabase.storage
             .from('photos-original')
-            .getPublicUrl(photo.file_url);
+            .createSignedUrl(photo.file_url, 60 * 60);
+
+          if (error) {
+            console.error('[PhotoView] Failed to create signed URL for original:', error);
+            // Fallback to blurred version if signed URL fails
+            const { data: blurredUrl } = supabase.storage
+              .from('photos')
+              .getPublicUrl(photo.watermarked_url);
+
+            return {
+              ...photo,
+              display_url: blurredUrl.publicUrl,
+              is_showing_original: false,
+            };
+          }
 
           return {
             ...photo,
-            display_url: originalUrl.publicUrl,
+            display_url: originalUrl.signedUrl,
             is_showing_original: true,
           };
         } else {
@@ -135,12 +192,16 @@ const PhotoView = () => {
             is_showing_original: false,
           };
         }
-      });
+      }));
 
       console.log('[PhotoView] Photos loaded successfully:', photosWithUrls);
 
-      const samplePhoto = photosWithUrls.find(photo => photo.is_sample);
-      setPhotoData(samplePhoto || photosWithUrls[0]);
+      // Get all sample photos
+      const samplePhotos = photosWithUrls.filter(photo => photo.is_sample);
+
+      // Set the first sample photo or first photo as default
+      const defaultPhoto = samplePhotos.length > 0 ? samplePhotos[0] : photosWithUrls[0];
+      setPhotoData(defaultPhoto);
       setAllPhotos(photosWithUrls);
 
       setLoading(false);
@@ -181,12 +242,20 @@ const PhotoView = () => {
       }
 
       // Download the dedicated sample image (or fallback to preview)
+      // Fetch the image as a blob to ensure actual file download
+      const response = await fetch(samplePhoto.display_url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+
       const link = document.createElement('a');
-      link.href = samplePhoto.display_url;
+      link.href = blobUrl;
       link.download = `snappo-${code}-sample.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
+      // Clean up the blob URL after a short delay
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
 
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
@@ -254,16 +323,26 @@ const PhotoView = () => {
           .eq('id', photoData.id);
 
         // Download original
-        const { data: originalUrl } = supabase.storage
+        const { data: originalUrl } = await supabase.storage
           .from('photos-original')
-          .getPublicUrl(photoData.file_url);
+          .createSignedUrl(photoData.file_url, 60 * 60);
 
-        const link = document.createElement('a');
-        link.href = originalUrl.publicUrl;
-        link.download = `snappo-${code}-original.jpg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (originalUrl?.signedUrl) {
+          // Fetch the image as a blob to ensure actual file download
+          const response = await fetch(originalUrl.signedUrl);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = `snappo-${code}-original.jpg`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+
+          // Clean up the blob URL after a short delay
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+        }
 
         setCodeData({ ...codeData, is_purchased: true });
         setShowSuccess(true);
@@ -290,6 +369,131 @@ const PhotoView = () => {
         >
           <div className="text-6xl mb-4">📸</div>
           <p className="text-2xl font-semibold text-navy">Loading your photo...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (pendingUpload) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-cream via-white to-peach/20 flex items-center justify-center px-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-2xl w-full"
+        >
+          <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-12">
+            {/* Code Display */}
+            <div className="flex flex-col items-center gap-4 mb-8">
+              <motion.div
+                initial={{ scale: 0.9 }}
+                animate={{ scale: 1 }}
+                className="bg-gradient-to-r from-teal to-cyan-500 text-white px-8 py-4 rounded-2xl shadow-lg"
+              >
+                <p className="text-sm font-semibold mb-1 opacity-90">YOUR CODE</p>
+                <p className="font-mono text-4xl font-bold tracking-wider">{code}</p>
+              </motion.div>
+
+              {/* Expiry Timer */}
+              {timeRemaining && (
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={`px-6 py-2 rounded-full shadow-lg font-bold font-mono text-lg ${
+                    timeRemaining === 'Expired'
+                      ? 'bg-red-500 text-white'
+                      : (timeRemaining.match(/:/g) || []).length === 1 && !timeRemaining.includes('day')
+                      ? parseInt(timeRemaining.split(':')[0]) === 0
+                        ? 'bg-red-500 text-white animate-pulse'
+                        : 'bg-orange-500 text-white'
+                      : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  ⏰ Expires in {timeRemaining}
+                </motion.div>
+              )}
+            </div>
+
+            {/* Photographer Working Animation */}
+            <div className="text-center mb-8">
+              <motion.div
+                animate={{
+                  rotate: [0, -5, 5, -5, 0],
+                  scale: [1, 1.1, 1, 1.1, 1]
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  repeatDelay: 1
+                }}
+                className="text-8xl mb-6"
+              >
+                📸
+              </motion.div>
+
+              <h1 className="text-3xl md:text-4xl font-bold text-navy mb-4">
+                Your Photos Are Being Prepared
+              </h1>
+
+              <p className="text-lg text-gray-600 mb-6">
+                Your photographer is currently uploading your photos. This usually takes just a few moments.
+              </p>
+
+              {/* Progress indicator */}
+              <div className="flex items-center justify-center gap-2 mb-8">
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: 0 }}
+                  className="w-3 h-3 bg-teal rounded-full"
+                />
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
+                  className="w-3 h-3 bg-teal rounded-full"
+                />
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
+                  className="w-3 h-3 bg-teal rounded-full"
+                />
+              </div>
+
+              {/* Info Box */}
+              <div className="bg-teal/5 border border-teal/20 rounded-2xl p-6 mb-6">
+                <div className="flex items-start gap-3 text-left">
+                  <div className="text-2xl">💡</div>
+                  <div>
+                    <p className="font-semibold text-gray-800 mb-2">What's happening?</p>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li>✓ Your code is valid and active</li>
+                      <li>✓ Photographer is uploading your photos</li>
+                      <li>✓ You'll be able to view them shortly</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <motion.button
+                onClick={() => window.location.reload()}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex-1 px-6 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-xl shadow-lg"
+              >
+                🔄 Refresh Page
+              </motion.button>
+              <motion.button
+                onClick={() => navigate('/')}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                className="flex-1 px-6 py-4 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                ← Back to Home
+              </motion.button>
+            </div>
+          </div>
         </motion.div>
       </div>
     );
@@ -348,9 +552,28 @@ const PhotoView = () => {
           <h1 className="text-5xl md:text-6xl font-bold text-navy mb-4">
             Your Snappo Moment 📸
           </h1>
-          <div className="inline-block bg-white px-6 py-3 rounded-full shadow-lg">
-            <span className="text-gray-600 font-semibold">Code: </span>
-            <span className="font-mono text-2xl font-bold text-teal">{code}</span>
+          <div className="flex flex-col items-center gap-3">
+            <div className="inline-block bg-white px-6 py-3 rounded-full shadow-lg">
+              <span className="text-gray-600 font-semibold">Code: </span>
+              <span className="font-mono text-2xl font-bold text-teal">{code}</span>
+            </div>
+            {timeRemaining && (
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className={`inline-block px-6 py-2 rounded-full shadow-lg font-bold font-mono text-lg ${
+                  timeRemaining === 'Expired'
+                    ? 'bg-red-500 text-white'
+                    : (timeRemaining.match(/:/g) || []).length === 1 && !timeRemaining.includes('day')
+                    ? parseInt(timeRemaining.split(':')[0]) === 0
+                      ? 'bg-red-500 text-white animate-pulse'
+                      : 'bg-orange-500 text-white'
+                    : 'bg-gradient-to-r from-teal to-cyan-500 text-white'
+                }`}
+              >
+                ⏰ {timeRemaining}
+              </motion.div>
+            )}
           </div>
         </motion.div>
 
@@ -424,6 +647,45 @@ const PhotoView = () => {
                 </motion.button>
               </div>
             </div>
+
+            {/* Sample Photo Gallery (if multiple samples) */}
+            {allPhotos.filter(p => p.is_sample).length > 1 && (
+              <div className="mt-6">
+                <p className="text-sm font-semibold text-gray-500 mb-3 text-center">
+                  📸 Sample Gallery ({allPhotos.filter(p => p.is_sample).length} photos)
+                </p>
+                <div className="flex gap-3 overflow-x-auto pb-2 justify-center">
+                  {allPhotos
+                    .filter(p => p.is_sample)
+                    .map((photo, index) => (
+                      <motion.div
+                        key={photo.id}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setPhotoData(photo)}
+                        className={`relative flex-shrink-0 w-24 h-24 rounded-xl overflow-hidden cursor-pointer border-4 transition-all ${
+                          photoData?.id === photo.id
+                            ? 'border-teal shadow-lg'
+                            : 'border-transparent hover:border-gray-300'
+                        }`}
+                      >
+                        <img
+                          src={photo.display_url}
+                          alt={`Sample ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                        {photoData?.id === photo.id && (
+                          <div className="absolute inset-0 bg-teal/20 flex items-center justify-center">
+                            <div className="w-6 h-6 bg-teal rounded-full flex items-center justify-center text-white font-bold text-xs">
+                              ✓
+                            </div>
+                          </div>
+                        )}
+                      </motion.div>
+                    ))}
+                </div>
+              </div>
+            )}
           </motion.div>
 
           {/* Locked Gallery / Purchase */}

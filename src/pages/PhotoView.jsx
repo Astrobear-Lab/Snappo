@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import PaymentModal from '../components/PaymentModal';
 
 const PhotoView = () => {
   const { code } = useParams();
@@ -21,8 +22,13 @@ const PhotoView = () => {
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState('');
 
-  // Mock payment mode (true = 실제 결제 없이 테스트)
-  const MOCK_PAYMENT = true;
+  // Stripe payment states
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [clientSecret, setClientSecret] = useState('');
+
+  // Mock payment mode (true = 실제 결제 없이 테스트, false = Stripe 실제 결제)
+  // TODO: Stripe 키 설정 후 false로 변경
+  const MOCK_PAYMENT = false;
 
   // Real-time countdown timer
   useEffect(() => {
@@ -348,12 +354,109 @@ const PhotoView = () => {
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 3000);
       } else {
-        // TODO: Real Stripe payment integration
-        alert('Real payment integration coming soon!');
+        // 💳 REAL STRIPE PAYMENT
+        // Create Payment Intent via Supabase Edge Function
+        const { data: functionData, error: functionError } = await supabase.functions.invoke(
+          'create-payment-intent',
+          {
+            body: {
+              amount: 3.0,
+              photoCodeId: codeData.id,
+              buyerId: user?.id || null,
+              photographerId: photoData.photographer_id,
+            },
+          }
+        );
+
+        if (functionError || !functionData?.clientSecret) {
+          throw new Error(functionError?.message || 'Failed to initialize payment');
+        }
+
+        // Set client secret and open payment modal
+        setClientSecret(functionData.clientSecret);
+        setShowPaymentModal(true);
+        setPurchasing(false); // Reset purchasing state as modal will handle it
       }
     } catch (err) {
       console.error('Purchase error:', err);
-      alert('Payment failed. Please try again.');
+      alert(`Payment failed: ${err.message || 'Please try again.'}`);
+      setPurchasing(false);
+    }
+  };
+
+  const handlePaymentSuccess = async (paymentIntent) => {
+    try {
+      setPurchasing(true);
+      setShowPaymentModal(false);
+
+      // Create transaction record
+      const { error: txError } = await supabase.from('transactions').insert([
+        {
+          photo_code_id: codeData.id,
+          buyer_id: user?.id || null,
+          photographer_id: photoData.photographer_id,
+          amount: 3.0,
+          photographer_earnings: 2.0,
+          platform_fee: 1.0,
+          payment_method: 'stripe',
+          payment_status: 'completed',
+          stripe_payment_id: paymentIntent.id,
+        },
+      ]);
+
+      if (txError) throw txError;
+
+      // Update photo code as purchased
+      await supabase
+        .from('photo_codes')
+        .update({
+          is_purchased: true,
+          purchased_by: user?.id || null,
+          purchased_at: new Date().toISOString(),
+        })
+        .eq('id', codeData.id);
+
+      // Update photographer earnings
+      await supabase.rpc('increment_photographer_earnings', {
+        p_photographer_id: photoData.photographer_id,
+        p_amount: 2.0,
+      });
+
+      // Update photo status and counts
+      await supabase
+        .from('photos')
+        .update({
+          status: 'sold',
+          downloads_count: (photoData.downloads_count || 0) + 1,
+        })
+        .eq('id', photoData.id);
+
+      // Download original
+      const { data: originalUrl } = await supabase.storage
+        .from('photos-original')
+        .createSignedUrl(photoData.file_url, 60 * 60);
+
+      if (originalUrl?.signedUrl) {
+        const response = await fetch(originalUrl.signedUrl);
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `snappo-${code}-original.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      }
+
+      setCodeData({ ...codeData, is_purchased: true });
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (err) {
+      console.error('Post-payment error:', err);
+      alert('Payment succeeded but failed to process. Please contact support.');
     } finally {
       setPurchasing(false);
     }
@@ -806,6 +909,15 @@ const PhotoView = () => {
             </motion.div>
           )}
         </div>
+
+        {/* Stripe Payment Modal */}
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentSuccess}
+          clientSecret={clientSecret}
+          amount={3.0}
+        />
       </div>
     </div>
   );

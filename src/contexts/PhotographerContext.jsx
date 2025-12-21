@@ -248,10 +248,23 @@ export const PhotographerProvider = ({ children }) => {
       const transformedCodes = await Promise.all(codesData.map(async (code) => {
         const photos = code.code_photos?.map(cp => cp.photos).filter(Boolean) || [];
         console.log(`[PhotographerContext] Code ${code.code}: found ${photos.length} photos`);
+
+        // Calculate status based on expiration and photos
+        const now = new Date();
+        const isExpired = new Date(code.expires_at) < now;
+        let status;
+        if (isExpired) {
+          status = 'expired';
+        } else if (photos.length > 0) {
+          status = 'published';
+        } else {
+          status = 'pending_upload';
+        }
+
         return {
           id: code.id,
           code: code.code,
-          status: photos.length > 0 ? 'published' : 'pending_upload',
+          status,
           createdAt: new Date(code.created_at),
           sharedAt: code.shared_at ? new Date(code.shared_at) : null,
           uploadedAt: code.uploaded_at ? new Date(code.uploaded_at) : null,

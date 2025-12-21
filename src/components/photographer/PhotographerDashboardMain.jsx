@@ -7,6 +7,7 @@ import ActiveCodesBoard from './ActiveCodesBoard';
 import TimelineMatchPanel from './TimelineMatchPanel';
 import CodeDetailDrawer from './CodeDetailDrawer';
 import ToastNotification from './ToastNotification';
+import StripeConnectButton from './StripeConnectButton';
 
 const PhotographerDashboardMain = () => {
   const { user } = useAuth();
@@ -264,14 +265,28 @@ const PhotographerDashboardMain = () => {
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-3xl shadow-lg p-8"
+                className="space-y-6"
               >
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">
-                  Settings
-                </h2>
-                <p className="text-gray-600">
-                  Settings panel coming soon...
-                </p>
+                {/* Payment Settings */}
+                <div className="bg-white rounded-3xl shadow-lg p-8">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                    💰 Payment Settings
+                  </h2>
+                  <p className="text-gray-600 mb-6">
+                    Connect your Stripe account to receive payments automatically when customers purchase photos.
+                  </p>
+                  <StripeConnectButton />
+                </div>
+
+                {/* Profile Settings */}
+                <div className="bg-white rounded-3xl shadow-lg p-8">
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                    👤 Profile Settings
+                  </h2>
+                  <p className="text-gray-600">
+                    Profile customization coming soon...
+                  </p>
+                </div>
               </motion.div>
             )}
           </div>

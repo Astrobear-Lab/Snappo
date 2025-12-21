@@ -18,14 +18,21 @@ npm run lint         # Run ESLint
 
 ## Environment Variables (CRITICAL)
 
-The app **requires** Supabase configuration to work. Create `.env` from `.env.example`:
+The app **requires** Supabase and Stripe configuration to work. Create `.env` from `.env.example`:
 
 ```env
+# Supabase
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
+
+# Stripe (for real payments)
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51...your-key
 ```
 
 **Deployment to Vercel**: Set these as environment variables in Vercel dashboard under Settings → Environment Variables.
+
+**Supabase Secrets** (for Edge Functions): Add via Supabase CLI or Dashboard → Settings → Edge Functions:
+- `STRIPE_SECRET_KEY=sk_test_51...your-secret-key`
 
 **OAuth Setup**: For Google sign-in, configure redirect URLs in:
 - **Supabase**: Authentication → URL Configuration → Add production URL
@@ -91,17 +98,38 @@ Code generation in [src/contexts/PhotographerContext.jsx](src/contexts/Photograp
 - Database constraint ensures uniqueness
 - Codes are immutable and tied to photos permanently
 
-### Mock Payment System
+### Payment System (Stripe Integration)
 
 **Location**: [src/pages/PhotoView.jsx](src/pages/PhotoView.jsx)
 
-Set `MOCK_PAYMENT = true` (default) for testing without real transactions:
+The app supports both mock and real Stripe payments:
+
+**Mock Mode** (`MOCK_PAYMENT = true`):
 - Simulates 2-second payment delay
 - Creates transaction records in database
 - Grants access to `photos-original` bucket
-- No Stripe/real payment integration required
+- No Stripe setup required - useful for testing flow
 
-To enable real payments: Set `MOCK_PAYMENT = false` and integrate Stripe.
+**Stripe Mode** (`MOCK_PAYMENT = false`):
+- Real payment processing via Stripe
+- Payment modal with Stripe Elements UI
+- Secure payment via Supabase Edge Function
+- Test mode available with test cards
+
+**Setup**: See [STRIPE_SETUP.md](STRIPE_SETUP.md) for complete integration guide.
+
+**Edge Function**: [supabase/functions/create-payment-intent/index.ts](supabase/functions/create-payment-intent/index.ts)
+- Creates Stripe Payment Intent
+- Requires `STRIPE_SECRET_KEY` in Supabase secrets
+- Frontend uses `VITE_STRIPE_PUBLISHABLE_KEY` from `.env`
+
+**Supported Payment Methods**:
+- **Card** (Visa, Mastercard, Amex) - Available on all browsers
+- **Apple Pay** - Safari + Apple devices only
+- **Google Pay** - Chrome with Google Pay setup
+- **PayPal** - All browsers (redirects to PayPal.com)
+
+Payment method availability depends on browser, device, and user setup.
 
 ### Auto-Verification Logic
 

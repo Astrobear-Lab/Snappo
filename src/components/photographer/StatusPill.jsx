@@ -12,11 +12,6 @@ const StatusPill = ({ status }) => {
       icon: '✓',
       className: 'bg-teal/10 text-teal border-teal/30',
     },
-    unlocked: {
-      label: 'Unlocked',
-      icon: '🔓',
-      className: 'bg-green-100 text-green-700 border-green-300',
-    },
     expired: {
       label: 'Expired',
       icon: '⏰',

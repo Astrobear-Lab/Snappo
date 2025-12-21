@@ -25,7 +25,14 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
     }
   }, [code]);
 
-  if (!code) return null;
+  // Auto-close drawer if code becomes invalid
+  useEffect(() => {
+    if (isOpen && !code) {
+      onClose();
+    }
+  }, [code, isOpen, onClose]);
+
+  if (!code || !localCode) return null;
 
   // Toggle sample status for a photo
   const togglePhotoSample = async (photoId, currentStatus) => {
@@ -71,39 +78,21 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const timeline = [
     {
       label: 'Created',
-      time: localCode.createdAt,
+      time: localCode?.createdAt || null,
       icon: '✨',
       active: true,
     },
     {
-      label: 'Shared',
-      time: localCode.sharedAt,
-      icon: '📤',
-      active: !!localCode.sharedAt,
-    },
-    {
       label: 'Uploaded',
-      time: localCode.uploadedAt,
+      time: localCode?.uploadedAt || null,
       icon: '📸',
-      active: !!localCode.uploadedAt,
+      active: !!localCode?.uploadedAt,
     },
     {
-      label: 'Published',
-      time: localCode.publishedAt,
-      icon: '✓',
-      active: !!localCode.publishedAt,
-    },
-    {
-      label: 'Viewed',
-      time: localCode.views > 0 ? localCode.createdAt : null,
-      icon: '👁',
-      active: localCode.views > 0,
-    },
-    {
-      label: 'Unlocked',
-      time: localCode.unlockedAt || null,
+      label: 'Redeemed',
+      time: localCode?.unlockedAt || null,
       icon: '🔓',
-      active: localCode.status === 'unlocked',
+      active: !!(localCode?.unlocks && localCode.unlocks > 0),
     },
   ];
 
@@ -118,6 +107,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   };
 
   const formatTimeAgo = (date) => {
+    if (!date) return '-';
     const seconds = Math.floor((new Date() - date) / 1000);
     if (seconds < 60) return 'just now';
     const minutes = Math.floor(seconds / 60);
@@ -128,13 +118,13 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
     return `${days}d ago`;
   };
 
-  const shareUrl = `${window.location.origin}/photo/${localCode.code}`;
+  const shareUrl = `${window.location.origin}/photo/${localCode?.code || ''}`;
 
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
         title: 'Photo Code',
-        text: `Check out my photos! Use code: ${localCode.code}`,
+        text: `Check out my photos! Use code: ${localCode?.code || ''}`,
         url: shareUrl,
       });
     } else {
@@ -143,6 +133,8 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   };
 
   const handleDeleteCode = async () => {
+    if (!localCode?.id) return;
+
     if (!window.confirm('Are you sure you want to delete this code? This action cannot be undone.')) {
       return;
     }
@@ -157,6 +149,8 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   };
 
   const handleSaveMetadata = async () => {
+    if (!localCode?.id) return;
+
     try {
       const tags = editedTags
         .split(',')
@@ -221,18 +215,18 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <h2 className="font-mono text-3xl font-bold text-gray-800">
-                      {localCode.code}
+                      {localCode?.code || 'N/A'}
                     </h2>
-                    <StatusPill status={localCode.status} />
+                    <StatusPill status={localCode?.status || 'unknown'} />
                   </div>
 
                   {/* Metadata Display/Edit */}
                   {!isEditingMetadata ? (
                     <div className="space-y-2">
-                      {localCode.note && (
+                      {localCode?.note && (
                         <p className="text-gray-600">{localCode.note}</p>
                       )}
-                      {localCode.tags && localCode.tags.length > 0 && (
+                      {localCode?.tags && localCode.tags.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {localCode.tags.map((tag, idx) => (
                             <span
@@ -321,19 +315,19 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center p-3 bg-gray-50 rounded-xl">
                   <div className="text-2xl font-bold text-gray-800">
-                    {localCode.photos.length}
+                    {localCode?.photos?.length || 0}
                   </div>
                   <div className="text-xs text-gray-600">Photos</div>
                 </div>
                 <div className="text-center p-3 bg-gray-50 rounded-xl">
                   <div className="text-2xl font-bold text-gray-800">
-                    {localCode.views}
+                    {localCode?.views || 0}
                   </div>
                   <div className="text-xs text-gray-600">Views</div>
                 </div>
                 <div className="text-center p-3 bg-teal/10 rounded-xl">
                   <div className="text-2xl font-bold text-teal">
-                    {localCode.unlocks}
+                    {localCode?.unlocks || 0}
                   </div>
                   <div className="text-xs text-teal">Unlocks</div>
                 </div>
@@ -348,8 +342,8 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   Share this code
                 </h3>
                 <QRDisplay
-                  code={localCode.code}
-                  link={`${window.location.origin}/photo/${localCode.code}`}
+                  code={localCode?.code || ''}
+                  link={`${window.location.origin}/photo/${localCode?.code || ''}`}
                   size="large"
                 />
 
@@ -487,12 +481,12 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   Recent Activity
                 </h3>
                 <div className="space-y-3">
-                  {localCode.views > 0 && (
+                  {(localCode?.views || 0) > 0 && (
                     <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl">
                       <div className="text-2xl">👁</div>
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-gray-800">
-                          Viewed {localCode.views} time{localCode.views > 1 ? 's' : ''}
+                          Viewed {localCode?.views || 0} time{(localCode?.views || 0) > 1 ? 's' : ''}
                         </div>
                         <div className="text-xs text-gray-500">
                           Last viewed 5m ago
@@ -501,29 +495,29 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                     </div>
                   )}
 
-                  {localCode.status === 'unlocked' && (
+                  {(localCode?.unlocks || 0) > 0 && (
                     <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl">
                       <div className="text-2xl">🔓</div>
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-gray-800">
-                          Unlocked
+                          Redeemed
                         </div>
                         <div className="text-xs text-gray-500">
-                          {formatTimeAgo(localCode.unlockedAt)} - Payout pending
+                          {formatTimeAgo(localCode?.unlockedAt)} - Payout pending
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {localCode.photos.length > 0 && (
+                  {(localCode?.photos?.length || 0) > 0 && (
                     <div className="flex items-center gap-3 p-3 bg-teal/10 rounded-xl">
                       <div className="text-2xl">📸</div>
                       <div className="flex-1">
                         <div className="text-sm font-semibold text-gray-800">
-                          {localCode.photos.length} photo{localCode.photos.length > 1 ? 's' : ''} added
+                          {localCode?.photos?.length || 0} photo{(localCode?.photos?.length || 0) > 1 ? 's' : ''} added
                         </div>
                         <div className="text-xs text-gray-500">
-                          {formatTimeAgo(localCode.createdAt)}
+                          {formatTimeAgo(localCode?.createdAt)}
                         </div>
                       </div>
                     </div>
@@ -533,9 +527,9 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
 
               {/* Actions */}
               <div className="space-y-3 pt-4 border-t border-gray-200">
-                {localCode.status !== 'expired' && (
+                {localCode?.status !== 'expired' && (
                   <motion.button
-                    onClick={() => extendCode(localCode.id, 24)}
+                    onClick={() => extendCode(localCode?.id, 24)}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     className="w-full py-3 bg-yellow-500 text-white font-semibold rounded-xl hover:bg-yellow-600 transition-colors"
@@ -546,7 +540,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
 
                 <motion.button
                   onClick={() => {
-                    invalidateCode(localCode.id);
+                    invalidateCode(localCode?.id);
                     onClose();
                   }}
                   whileHover={{ scale: 1.02 }}

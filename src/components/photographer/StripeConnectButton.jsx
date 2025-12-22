@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -6,9 +6,33 @@ import { usePhotographer } from '../../contexts/PhotographerContext';
 
 const StripeConnectButton = () => {
   const { user } = useAuth();
-  const { photographerProfile, refreshPhotographerProfile } = usePhotographer();
+  const { photographerProfile, refreshPhotographerProfile, addNotification } = usePhotographer();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Handle redirect from Stripe Connect onboarding
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connect') === 'success') {
+      // Refresh profile to get updated Stripe status
+      refreshPhotographerProfile();
+      // Clean URL
+      window.history.replaceState({}, '', '/dashboard');
+      // Show success notification
+      addNotification?.({
+        type: 'success',
+        message: 'Stripe account connected successfully!',
+      });
+    } else if (params.get('connect') === 'refresh') {
+      // User needs to complete onboarding
+      refreshPhotographerProfile();
+      window.history.replaceState({}, '', '/dashboard');
+      addNotification?.({
+        type: 'info',
+        message: 'Please complete your Stripe onboarding to start receiving payments.',
+      });
+    }
+  }, [refreshPhotographerProfile, addNotification]);
 
   const handleConnect = async () => {
     setLoading(true);
@@ -24,11 +48,34 @@ const StripeConnectButton = () => {
         },
       });
 
+      console.log('Edge Function response:', { data, functionError });
+
       if (functionError) {
-        throw new Error(functionError.message || 'Failed to create Stripe account');
+        // Try to get detailed error message from response
+        let errorMessage = functionError.message || 'Failed to create Stripe account';
+
+        if (functionError.context) {
+          try {
+            const errorBody = await functionError.context.json();
+            console.error('Error body:', errorBody);
+            errorMessage = errorBody.error || errorMessage;
+          } catch (e) {
+            console.error('Could not parse error response');
+          }
+        }
+
+        console.error('Function error details:', functionError);
+        throw new Error(errorMessage);
+      }
+
+      if (data?.error) {
+        // Handle error returned in data
+        console.error('Data error:', data.error);
+        throw new Error(data.error);
       }
 
       if (!data?.onboardingUrl) {
+        console.error('No onboarding URL in response:', data);
         throw new Error('No onboarding URL received');
       }
 

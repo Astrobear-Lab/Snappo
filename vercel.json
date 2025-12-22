@@ -4,6 +4,10 @@
       "handle": "filesystem"
     },
     {
+      "src": "/.well-known/(.*)",
+      "dest": "/.well-known/$1"
+    },
+    {
       "src": "/.*",
       "dest": "/index.html"
     }

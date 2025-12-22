@@ -85,7 +85,7 @@ serve(async (req) => {
     // Create account link for onboarding
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${Deno.env.get('APP_URL')}/dashboard`,
+      refresh_url: `${Deno.env.get('APP_URL')}/dashboard?connect=refresh`,
       return_url: `${Deno.env.get('APP_URL')}/dashboard?connect=success`,
       type: 'account_onboarding',
     })

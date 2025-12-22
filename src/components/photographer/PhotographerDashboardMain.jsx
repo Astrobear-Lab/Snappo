@@ -8,6 +8,7 @@ import TimelineMatchPanel from './TimelineMatchPanel';
 import CodeDetailDrawer from './CodeDetailDrawer';
 import ToastNotification from './ToastNotification';
 import StripeConnectButton from './StripeConnectButton';
+import EarningsDashboard from './EarningsDashboard';
 
 const PhotographerDashboardMain = () => {
   const { user } = useAuth();
@@ -32,6 +33,7 @@ const PhotographerDashboardMain = () => {
     { id: 'dashboard', label: 'Dashboard', icon: '🏠' },
     { id: 'codes', label: 'Active Codes', icon: '🎫' },
     { id: 'upload', label: 'Upload & Match', icon: '📸' },
+    { id: 'earnings', label: 'Earnings', icon: '💰' },
     { id: 'settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -257,6 +259,16 @@ const PhotographerDashboardMain = () => {
                 animate={{ opacity: 1, y: 0 }}
               >
                 <TimelineMatchPanel />
+              </motion.div>
+            )}
+
+            {/* Earnings View */}
+            {activeView === 'earnings' && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                <EarningsDashboard />
               </motion.div>
             )}
 

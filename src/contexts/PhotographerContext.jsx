@@ -161,6 +161,37 @@ export const PhotographerProvider = ({ children }) => {
   const [uploads, setUploads] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loadingCodes, setLoadingCodes] = useState(false);
+  const [photographerProfile, setPhotographerProfile] = useState(null);
+
+  // Fetch and refresh photographer profile
+  const refreshPhotographerProfile = useCallback(async () => {
+    if (!user) {
+      setPhotographerProfile(null);
+      return null;
+    }
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('photographer_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (!error && profile) {
+        setPhotographerProfile(profile);
+        return profile;
+      }
+      return null;
+    } catch (error) {
+      console.error('[PhotographerContext] Failed to fetch photographer profile:', error);
+      return null;
+    }
+  }, [user]);
+
+  // Load photographer profile when user changes
+  useEffect(() => {
+    refreshPhotographerProfile();
+  }, [refreshPhotographerProfile]);
 
   // Fetch codes from Supabase
   const fetchCodes = useCallback(async () => {
@@ -556,6 +587,8 @@ export const PhotographerProvider = ({ children }) => {
     uploads,
     notifications,
     loadingCodes,
+    photographerProfile,
+    refreshPhotographerProfile,
     createCode,
     uploadPhotos,
     matchPhotosToCode,

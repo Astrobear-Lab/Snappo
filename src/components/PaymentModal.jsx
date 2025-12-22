@@ -110,51 +110,55 @@ const PaymentForm = ({ onSuccess, onCancel, amount }) => {
         </div>
       )}
 
-      {/* Payment Element with Card Brand Icons Header */}
-      <div className="border border-gray-300 rounded-xl overflow-hidden">
-        {/* Card Brands Header */}
-        <div className="bg-gray-50 px-4 py-3 border-b border-gray-300 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-700">Credit or Debit Card</span>
-          <div className="flex items-center gap-1.5">
-            {/* Visa */}
-            <div className="h-6 w-9 bg-white border border-gray-200 rounded flex items-center justify-center shadow-sm">
-              <svg viewBox="0 0 48 32" className="h-3.5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M20.28 11.36h-3.24l-2.02 9.36h3.24l2.02-9.36zM31.6 17.12c0 1.84-2.24 1.84-2.24 1.84s-1.6-.04-2.24-.48l-.32 1.84s1.2.44 2.76.44c1.56 0 4.04-.64 4.04-3.68 0-2.88-3.96-3.04-3.96-4.4 0-1.36 3.4-1.12 3.4-1.12s1.16.16 1.64.32l.32-1.8s-.96-.36-2.32-.36c-1.36 0-3.92.76-3.92 3.64 0 2.88 3.84 3.12 3.84 4.76zm7.08 3.6h2.88l-2.52-9.36h-2.64c-.6 0-.96.36-1.2.84l-4.24 8.52h3.44l.68-1.88h4.2l.4 1.88zm-3.64-4.48l1.72-4.76.96 4.76h-2.68zm-14.6-4.88l-3.2 6.88-.36-1.72s-1.04-3.56-4.32-4.4l2.92 7.6h3.48l5.16-8.36h-3.68z" fill="#1434CB"/>
-              </svg>
-            </div>
+      {/* Card Brand Buttons */}
+      <div className="flex items-center justify-center gap-2">
+        {/* Visa */}
+        <button
+          type="button"
+          className="h-10 px-4 bg-white border-2 border-gray-300 rounded-lg hover:border-blue-500 transition-colors flex items-center justify-center"
+        >
+          <svg viewBox="0 0 48 32" className="h-5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M20.28 11.36h-3.24l-2.02 9.36h3.24l2.02-9.36zM31.6 17.12c0 1.84-2.24 1.84-2.24 1.84s-1.6-.04-2.24-.48l-.32 1.84s1.2.44 2.76.44c1.56 0 4.04-.64 4.04-3.68 0-2.88-3.96-3.04-3.96-4.4 0-1.36 3.4-1.12 3.4-1.12s1.16.16 1.64.32l.32-1.8s-.96-.36-2.32-.36c-1.36 0-3.92.76-3.92 3.64 0 2.88 3.84 3.12 3.84 4.76zm7.08 3.6h2.88l-2.52-9.36h-2.64c-.6 0-.96.36-1.2.84l-4.24 8.52h3.44l.68-1.88h4.2l.4 1.88zm-3.64-4.48l1.72-4.76.96 4.76h-2.68zm-14.6-4.88l-3.2 6.88-.36-1.72s-1.04-3.56-4.32-4.4l2.92 7.6h3.48l5.16-8.36h-3.68z" fill="#1434CB"/>
+          </svg>
+        </button>
 
-            {/* Mastercard */}
-            <div className="h-6 w-9 bg-white border border-gray-200 rounded flex items-center justify-center shadow-sm">
-              <svg viewBox="0 0 48 32" className="h-3.5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="18" cy="16" r="7" fill="#EB001B"/>
-                <circle cx="30" cy="16" r="7" fill="#F79E1B"/>
-                <path d="M24 11a6.98 6.98 0 00-2 5 6.98 6.98 0 002 5 6.98 6.98 0 002-5 6.98 6.98 0 00-2-5z" fill="#FF5F00"/>
-              </svg>
-            </div>
+        {/* Mastercard */}
+        <button
+          type="button"
+          className="h-10 px-4 bg-white border-2 border-gray-300 rounded-lg hover:border-orange-500 transition-colors flex items-center justify-center"
+        >
+          <svg viewBox="0 0 48 32" className="h-5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="16" r="7" fill="#EB001B"/>
+            <circle cx="30" cy="16" r="7" fill="#F79E1B"/>
+            <path d="M24 11a6.98 6.98 0 00-2 5 6.98 6.98 0 002 5 6.98 6.98 0 002-5 6.98 6.98 0 00-2-5z" fill="#FF5F00"/>
+          </svg>
+        </button>
 
-            {/* American Express */}
-            <div className="h-6 w-9 bg-white border border-gray-200 rounded flex items-center justify-center shadow-sm">
-              <svg viewBox="0 0 48 32" className="h-3.5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="8" y="10" width="32" height="12" rx="1" fill="#006FCF"/>
-                <text x="24" y="19" fill="white" fontSize="8" fontWeight="bold" textAnchor="middle" fontFamily="Arial">AMEX</text>
-              </svg>
-            </div>
+        {/* American Express */}
+        <button
+          type="button"
+          className="h-10 px-4 bg-white border-2 border-gray-300 rounded-lg hover:border-blue-600 transition-colors flex items-center justify-center"
+        >
+          <svg viewBox="0 0 48 32" className="h-5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="10" width="32" height="12" rx="1" fill="#006FCF"/>
+            <text x="24" y="19" fill="white" fontSize="8" fontWeight="bold" textAnchor="middle" fontFamily="Arial">AMEX</text>
+          </svg>
+        </button>
 
-            {/* Discover */}
-            <div className="h-6 w-9 bg-white border border-gray-200 rounded flex items-center justify-center shadow-sm">
-              <svg viewBox="0 0 48 32" className="h-3.5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect x="8" y="10" width="32" height="12" rx="1" fill="#FF6000"/>
-                <circle cx="35" cy="16" r="4" fill="#F7981D"/>
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        {/* Payment Element */}
-        <div className="p-4 bg-white">
-          <PaymentElement />
-        </div>
+        {/* Discover */}
+        <button
+          type="button"
+          className="h-10 px-4 bg-white border-2 border-gray-300 rounded-lg hover:border-orange-600 transition-colors flex items-center justify-center"
+        >
+          <svg viewBox="0 0 48 32" className="h-5 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="10" width="32" height="12" rx="1" fill="#FF6000"/>
+            <circle cx="35" cy="16" r="4" fill="#F7981D"/>
+          </svg>
+        </button>
       </div>
+
+      {/* Regular Payment Element - Card */}
+      <PaymentElement />
 
       {errorMessage && (
         <motion.div

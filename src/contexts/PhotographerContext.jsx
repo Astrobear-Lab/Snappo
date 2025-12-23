@@ -267,7 +267,8 @@ export const PhotographerProvider = ({ children }) => {
           .createSignedUrl(path, 60 * 60); // 1 hour
 
         if (error) {
-          console.error('[PhotographerContext] Failed to create signed URL:', error);
+          // Silently ignore - file might not exist in bucket (old uploads)
+          // This is expected for photos uploaded before the photos-original bucket existed
           return null;
         }
 

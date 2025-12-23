@@ -21,6 +21,8 @@ const PhotoView = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState(0);
   const [timeRemaining, setTimeRemaining] = useState('');
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
 
   // Stripe payment states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -158,18 +160,35 @@ const PhotoView = () => {
 
       // 4. Get URLs and determine what to show (using signed URLs for private originals)
       const photosWithUrls = await Promise.all(photos.map(async (photo) => {
-        // If it's a sample or already purchased, show original
-        const showOriginal = photo.is_sample || photoCodeData.is_purchased;
+        // If it's a sample, use Edge Function to bypass RLS
+        if (photo.is_sample) {
+          try {
+            const { data: urlData, error: urlError } = await supabase.functions.invoke(
+              'get-sample-photo-url',
+              { body: { photoId: photo.id } }
+            );
 
-        if (showOriginal) {
-          // Use signed URL for private bucket (1 hour expiry)
-          const { data: originalUrl, error } = await supabase.storage
-            .from('photos-original')
-            .createSignedUrl(photo.file_url, 60 * 60);
+            if (urlError || !urlData?.signedUrl) {
+              console.error('[PhotoView] Failed to get sample photo URL:', urlError);
+              // Fallback to blurred version
+              const { data: blurredUrl } = supabase.storage
+                .from('photos')
+                .getPublicUrl(photo.watermarked_url);
 
-          if (error) {
-            console.error('[PhotoView] Failed to create signed URL for original:', error);
-            // Fallback to blurred version if signed URL fails
+              return {
+                ...photo,
+                display_url: blurredUrl.publicUrl,
+                is_showing_original: false,
+              };
+            }
+
+            return {
+              ...photo,
+              display_url: urlData.signedUrl,
+              is_showing_original: true,
+            };
+          } catch (err) {
+            console.error('[PhotoView] Sample photo URL error:', err);
             const { data: blurredUrl } = supabase.storage
               .from('photos')
               .getPublicUrl(photo.watermarked_url);
@@ -180,14 +199,46 @@ const PhotoView = () => {
               is_showing_original: false,
             };
           }
+        } else if (photoCodeData.is_purchased) {
+          // Purchased photos: use Edge Function to get signed URL (bypasses RLS)
+          try {
+            const { data: urlData, error } = await supabase.functions.invoke(
+              'get-purchased-photo-url',
+              {
+                body: {
+                  photoId: photo.id,
+                  photoCodeId: photoCodeData.id,
+                },
+              }
+            );
 
-          return {
-            ...photo,
-            display_url: originalUrl.signedUrl,
-            is_showing_original: true,
-          };
+            if (error) throw error;
+
+            // Log if using fallback
+            if (urlData.fallback) {
+              console.warn('[PhotoView] Using fallback (blurred) for purchased photo:', photo.id);
+            }
+
+            return {
+              ...photo,
+              display_url: urlData.signedUrl,
+              is_showing_original: urlData.isOriginal ?? true,
+            };
+          } catch (err) {
+            console.error('[PhotoView] Purchased photo URL error:', err);
+            // Fallback to blurred version if Edge Function fails
+            const { data: blurredUrl } = supabase.storage
+              .from('photos')
+              .getPublicUrl(photo.watermarked_url);
+
+            return {
+              ...photo,
+              display_url: blurredUrl.publicUrl,
+              is_showing_original: false,
+            };
+          }
         } else {
-          // Show blurred version
+          // Locked photos: show blurred version from photos bucket
           const { data: blurredUrl } = supabase.storage
             .from('photos')
             .getPublicUrl(photo.watermarked_url);
@@ -477,20 +528,33 @@ const PhotoView = () => {
         throw txError;
       }
 
-      console.log('[Payment Success] Updating photo code...');
-      // Update photo code as purchased
-      const { error: codeError } = await supabase
-        .from('photo_codes')
-        .update({
-          is_purchased: true,
-          purchased_by: user?.id || null,
-          purchased_at: new Date().toISOString(),
-        })
-        .eq('id', codeData.id);
+      console.log('[Payment Success] Updating photo code...', { codeId: codeData.id });
+      // Update photo code as purchased using Edge Function (bypasses RLS for guests)
+      const { data: codeUpdateResult, error: codeError } = await supabase.functions.invoke(
+        'mark-code-purchased',
+        {
+          body: {
+            photoCodeId: codeData.id,
+            buyerId: user?.id || null,
+          },
+        }
+      );
 
       if (codeError) {
-        console.error('[Payment Success] Code update error:', codeError);
+        // Read error body if possible
+        let errorBody = null;
+        if (codeError.context && typeof codeError.context.json === 'function') {
+          try {
+            errorBody = await codeError.context.json();
+          } catch (e) {
+            errorBody = 'Could not parse error';
+          }
+        }
+        console.error('[Payment Success] Code update error:', codeError, errorBody);
+        throw new Error('Failed to update purchase status');
       }
+
+      console.log('[Payment Success] Code update confirmed:', codeUpdateResult);
 
       console.log('[Payment Success] Updating photographer earnings...');
       // Update photographer earnings - Trigger handles this automatically now
@@ -514,18 +578,44 @@ const PhotoView = () => {
         console.warn('[Payment Success] No photoData.id, skipping photo update');
       }
 
-      // Download original - only if we have a valid file_url
-      if (photoData?.file_url) {
+      // Download original - only if we have a valid photo ID
+      if (photoData?.id) {
         console.log('[Payment Success] Downloading original photo...');
-        const { data: originalUrl, error: urlError } = await supabase.storage
-          .from('photos-original')
-          .createSignedUrl(photoData.file_url, 60 * 60);
+
+        // Use Edge Function to get signed URL (bypasses RLS)
+        const { data: urlData, error: urlError } = await supabase.functions.invoke(
+          'get-purchased-photo-url',
+          {
+            body: {
+              photoId: photoData.id,
+              photoCodeId: codeData.id,
+            },
+          }
+        );
 
         if (urlError) {
-          console.error('[Payment Success] Signed URL error:', urlError);
-        } else if (originalUrl?.signedUrl) {
+          // Read the actual error message from the response body
+          let errorBody = null;
+          if (urlError.context && typeof urlError.context.json === 'function') {
+            try {
+              errorBody = await urlError.context.json();
+            } catch (e) {
+              errorBody = 'Could not parse error body';
+            }
+          }
+          console.error('[Payment Success] Edge Function error:', {
+            message: urlError.message,
+            errorBody: errorBody,
+            details: urlData
+          });
+        } else if (urlData?.signedUrl) {
+          // Log if using fallback
+          if (urlData.fallback) {
+            console.warn('[Payment Success] Downloading fallback (blurred) version');
+          }
+
           try {
-            const response = await fetch(originalUrl.signedUrl);
+            const response = await fetch(urlData.signedUrl);
             const blob = await response.blob();
 
             // Detect if mobile
@@ -589,10 +679,87 @@ const PhotoView = () => {
         console.warn('[Payment Success] No photoData.file_url, skipping download');
       }
 
-      setCodeData({ ...codeData, is_purchased: true });
+      // Update code data to reflect purchase
+      const updatedCodeData = { ...codeData, is_purchased: true };
+      setCodeData(updatedCodeData);
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-      console.log('[Payment Success] Complete!');
+      // Auto-hide success message after 5 seconds
+      setTimeout(() => setShowSuccess(false), 5000);
+      console.log('[Payment Success] Complete! Updating photos...');
+
+      // Update all photos to show originals without page refresh
+      try {
+        const updatedPhotos = await Promise.all(allPhotos.map(async (photo) => {
+          // Sample photos stay as-is (already showing original)
+          if (photo.is_sample) {
+            return photo;
+          }
+
+          // Now all photos should show originals since code is purchased
+          // Use Edge Function to bypass RLS
+          try {
+            const { data: urlData, error } = await supabase.functions.invoke(
+              'get-purchased-photo-url',
+              {
+                body: {
+                  photoId: photo.id,
+                  photoCodeId: updatedCodeData.id,
+                },
+              }
+            );
+
+            if (error) {
+              // Read the actual error message from the response body
+              let errorBody = null;
+              if (error.context && typeof error.context.json === 'function') {
+                try {
+                  errorBody = await error.context.json();
+                } catch (e) {
+                  errorBody = 'Could not parse error body';
+                }
+              }
+              console.error('[Payment Success] Edge Function error for photo:', photo.id, {
+                message: error.message,
+                errorBody: errorBody,
+                response: urlData
+              });
+              throw error;
+            }
+
+            // Log if using fallback
+            if (urlData?.fallback) {
+              console.warn('[Payment Success] Using fallback (blurred) for:', photo.id);
+            }
+
+            return {
+              ...photo,
+              display_url: urlData?.signedUrl || photo.display_url,
+              is_showing_original: urlData?.isOriginal ?? true,
+            };
+          } catch (err) {
+            console.error('[Payment Success] Failed to get URL for:', photo.id, err);
+            // Keep blurred version if URL creation fails
+            return photo;
+          }
+        }));
+
+        console.log('[Payment Success] Updated photos:', updatedPhotos);
+        setAllPhotos(updatedPhotos);
+
+        // Update the main photoData if it's not a sample
+        if (photoData && !photoData.is_sample) {
+          const updatedMainPhoto = updatedPhotos.find(p => p.id === photoData.id);
+          if (updatedMainPhoto) {
+            setPhotoData(updatedMainPhoto);
+          }
+        }
+      } catch (updateErr) {
+        console.error('[Payment Success] Error updating photos:', updateErr);
+        // If update fails, fall back to page refresh
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      }
     } catch (err) {
       console.error('Post-payment error:', err);
       console.error('Error details:', {
@@ -845,7 +1012,7 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
             transition={{ delay: 0.2 }}
             className="bg-white/70 rounded-3xl shadow-xl p-6 md:p-10"
           >
-            <div className="grid md:grid-cols-2 gap-8 items-start">
+            <div className="grid md:grid-cols-[1.2fr_1fr] gap-6 items-center">
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
                 <img
                   src={photoData?.display_url}
@@ -894,7 +1061,7 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
                   disabled={downloading}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="w-full mt-4 py-4 bg-gradient-to-r from-gray-900 to-gray-700 text-white font-bold text-lg rounded-2xl shadow-lg disabled:opacity-50 transition-all"
+                  className="w-full mt-2 py-4 bg-gradient-to-r from-gray-900 to-gray-700 text-white font-bold text-lg rounded-2xl shadow-lg disabled:opacity-50 transition-all"
                 >
                   {downloading ? 'Downloading...' : '⬇️ Download Free Preview'}
                 </motion.button>
@@ -946,21 +1113,119 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-green-50 border border-green-200 rounded-3xl p-8 text-center shadow-inner"
+              className="bg-white rounded-3xl p-6 md:p-10 shadow-2xl"
             >
-              <div className="text-6xl mb-4">🎉</div>
-              <h3 className="text-3xl font-bold text-green-800 mb-2">Full Gallery Unlocked</h3>
-              <p className="text-green-700 mb-6">
-                Enjoy every moment in its original quality. Re-download anytime.
-              </p>
-              <motion.button
-                onClick={handleFreeDownload}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="px-8 py-4 bg-green-500 text-white font-bold rounded-2xl"
-              >
-                ⬇️ Download Again
-              </motion.button>
+              {/* Success Header */}
+              <div className="text-center mb-8">
+                <div className="text-6xl mb-4">🎉</div>
+                <h3 className="text-3xl font-bold text-green-800 mb-2">Full Gallery Unlocked!</h3>
+                <p className="text-green-700 mb-4">
+                  Enjoy every moment in its original quality. Download all photos below.
+                </p>
+                <motion.button
+                  onClick={async () => {
+                    // Download ALL photos (including samples)
+                    for (const photo of allPhotos) {
+                      let signedUrl = null;
+
+                      // Get signed URL based on photo type
+                      if (photo.is_sample) {
+                        // Use sample photo Edge Function
+                        const { data: urlData } = await supabase.functions.invoke(
+                          'get-sample-photo-url',
+                          { body: { photoId: photo.id } }
+                        );
+                        signedUrl = urlData?.signedUrl;
+                      } else {
+                        // Use purchased photo Edge Function
+                        const { data: urlData } = await supabase.functions.invoke(
+                          'get-purchased-photo-url',
+                          {
+                            body: {
+                              photoId: photo.id,
+                              photoCodeId: codeData.id,
+                            },
+                          }
+                        );
+                        signedUrl = urlData?.signedUrl;
+                      }
+
+                      if (signedUrl) {
+                        const response = await fetch(signedUrl);
+                        const blob = await response.blob();
+
+                        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+                        if (isMobile && navigator.share) {
+                          try {
+                            const file = new File([blob], `snappo-${code}-${photo.id}.jpg`, { type: 'image/jpeg' });
+                            await navigator.share({ files: [file] });
+                          } catch (err) {
+                            const blobUrl = URL.createObjectURL(blob);
+                            window.open(blobUrl, '_blank');
+                            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                          }
+                        } else {
+                          const blobUrl = URL.createObjectURL(blob);
+                          const link = document.createElement('a');
+                          link.href = blobUrl;
+                          link.download = `snappo-${code}-${photo.id}.jpg`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+                        }
+
+                        // Wait a bit between downloads
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                      }
+                    }
+                  }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold rounded-2xl shadow-lg"
+                >
+                  ⬇️ Download All Photos ({allPhotos.length})
+                </motion.button>
+              </div>
+
+              {/* Unlocked Gallery Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {allPhotos.map((photo, index) => (
+                  <motion.div
+                    key={photo.id || `photo-${index}`}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="relative rounded-2xl overflow-hidden shadow-lg group cursor-pointer"
+                    onClick={() => {
+                      setModalPhotoIndex(index);
+                      setShowImageModal(true);
+                    }}
+                  >
+                    <img
+                      src={photo.display_url}
+                      alt={photo.title || `Photo ${index + 1}`}
+                      className="w-full h-48 object-cover"
+                    />
+                    {photo.is_sample && (
+                      <div className="absolute top-2 right-2 bg-teal text-white px-3 py-1 rounded-full text-xs font-semibold">
+                        Sample
+                      </div>
+                    )}
+                    {photo.is_showing_original && !photo.is_sample && (
+                      <div className="absolute top-2 right-2 bg-green-500 text-white px-3 py-1 rounded-full text-xs font-semibold">
+                        ✓ Unlocked
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-3xl">
+                        🔍
+                      </span>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
             </motion.div>
           ) : lockedPhotos.length > 0 ? (
             <motion.div
@@ -1068,6 +1333,81 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
           clientSecret={clientSecret}
           amount={parseFloat(codeData?.price) || 3.0}
         />
+
+        {/* Image Lightbox Modal */}
+        <AnimatePresence>
+          {showImageModal && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"
+              onClick={() => setShowImageModal(false)}
+            >
+              <button
+                onClick={() => setShowImageModal(false)}
+                className="absolute top-4 right-4 text-white text-4xl hover:text-gray-300 z-10"
+              >
+                ×
+              </button>
+
+              {/* Previous Button */}
+              {modalPhotoIndex > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setModalPhotoIndex(modalPhotoIndex - 1);
+                  }}
+                  className="absolute left-4 text-white text-4xl hover:text-gray-300 z-10"
+                >
+                  ‹
+                </button>
+              )}
+
+              {/* Next Button */}
+              {modalPhotoIndex < allPhotos.length - 1 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setModalPhotoIndex(modalPhotoIndex + 1);
+                  }}
+                  className="absolute right-4 text-white text-4xl hover:text-gray-300 z-10"
+                >
+                  ›
+                </button>
+              )}
+
+              <motion.div
+                initial={{ scale: 0.9 }}
+                animate={{ scale: 1 }}
+                exit={{ scale: 0.9 }}
+                className="max-w-5xl max-h-[90vh]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <img
+                  src={allPhotos[modalPhotoIndex]?.display_url}
+                  alt={allPhotos[modalPhotoIndex]?.title || 'Photo'}
+                  className="max-w-full max-h-[90vh] object-contain rounded-lg"
+                />
+                {allPhotos[modalPhotoIndex]?.is_sample && (
+                  <div className="absolute top-4 left-4 bg-teal text-white px-4 py-2 rounded-full font-semibold">
+                    Sample Preview
+                  </div>
+                )}
+                {allPhotos[modalPhotoIndex]?.is_showing_original && !allPhotos[modalPhotoIndex]?.is_sample && (
+                  <div className="absolute top-4 left-4 bg-green-500 text-white px-4 py-2 rounded-full font-semibold">
+                    ✓ Original Quality
+                  </div>
+                )}
+              </motion.div>
+
+              {/* Photo Counter */}
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black/50 text-white px-4 py-2 rounded-full">
+                {modalPhotoIndex + 1} / {allPhotos.length}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

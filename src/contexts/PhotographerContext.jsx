@@ -537,6 +537,66 @@ export const PhotographerProvider = ({ children }) => {
     });
   }, []);
 
+  const updateCodePrice = useCallback(async (codeId, newPrice) => {
+    if (!codeId || newPrice < 3) {
+      addNotification({
+        type: 'error',
+        message: 'Price must be at least $3.00',
+      });
+      return false;
+    }
+
+    try {
+      console.log('[PhotographerContext] Updating code price:', codeId, newPrice);
+
+      // Check if code is already purchased
+      const { data: codeData, error: fetchError } = await supabase
+        .from('photo_codes')
+        .select('is_purchased')
+        .eq('id', codeId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      if (codeData.is_purchased) {
+        addNotification({
+          type: 'error',
+          message: 'Cannot change price of sold code',
+        });
+        return false;
+      }
+
+      // Update price
+      const { error: updateError } = await supabase
+        .from('photo_codes')
+        .update({ price: parseFloat(newPrice) })
+        .eq('id', codeId);
+
+      if (updateError) throw updateError;
+
+      // Update local state
+      setCodes((prev) =>
+        prev.map((code) =>
+          code.id === codeId ? { ...code, price: parseFloat(newPrice) } : code
+        )
+      );
+
+      addNotification({
+        type: 'success',
+        message: `Price updated to $${parseFloat(newPrice).toFixed(2)}`,
+      });
+
+      return true;
+    } catch (error) {
+      console.error('[PhotographerContext] Failed to update price:', error);
+      addNotification({
+        type: 'error',
+        message: 'Failed to update price. Please try again.',
+      });
+      return false;
+    }
+  }, [addNotification]);
+
   const deleteCode = useCallback(async (codeId) => {
     if (!codeId) return;
 
@@ -598,6 +658,7 @@ export const PhotographerProvider = ({ children }) => {
     getCodesByStatus,
     extendCode,
     invalidateCode,
+    updateCodePrice,
     fetchCodes,
     deleteCode,
     removeUploads,

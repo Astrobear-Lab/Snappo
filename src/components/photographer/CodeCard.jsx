@@ -10,9 +10,11 @@ import QRDisplay from './QRDisplay';
 
 const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
   const { user } = useAuth();
-  const { fetchCodes } = usePhotographer();
+  const { fetchCodes, updateCodePrice } = usePhotographer();
   const [showQR, setShowQR] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [editingPrice, setEditingPrice] = useState(false);
+  const [newPrice, setNewPrice] = useState(code.price || 3.0);
   const fileInputRef = useRef(null);
 
   // Helper to get photo URL (handles both paths and full URLs)
@@ -43,6 +45,18 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code.code);
+  };
+
+  const handlePriceSave = async () => {
+    const success = await updateCodePrice(code.id, newPrice);
+    if (success) {
+      setEditingPrice(false);
+    }
+  };
+
+  const handlePriceCancel = () => {
+    setNewPrice(code.price || 3.0);
+    setEditingPrice(false);
   };
 
   const handleUploadClick = () => {
@@ -241,7 +255,7 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
       </AnimatePresence>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-4 py-3 border-t border-b border-gray-100">
+      <div className="grid grid-cols-4 gap-3 mb-4 py-3 border-t border-b border-gray-100">
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Photos</div>
           <div className="font-bold text-gray-800">{code.photos.length}</div>
@@ -254,7 +268,54 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
           <div className="text-xs text-gray-500 mb-1">Unlocks</div>
           <div className="font-bold text-teal">{code.unlocks}</div>
         </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-500 mb-1">Price</div>
+          {editingPrice ? (
+            <div className="flex items-center justify-center gap-1">
+              <span className="text-xs text-gray-500">$</span>
+              <input
+                type="number"
+                min="3"
+                step="0.01"
+                value={newPrice}
+                onChange={(e) => setNewPrice(Math.max(3, parseFloat(e.target.value) || 3))}
+                className="w-14 px-1 py-0.5 text-xs font-bold text-center border border-teal rounded focus:outline-none focus:ring-1 focus:ring-teal"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handlePriceSave();
+                  if (e.key === 'Escape') handlePriceCancel();
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              className="font-bold text-teal cursor-pointer hover:bg-teal/10 rounded px-1 transition-colors"
+              onClick={() => !code.is_purchased && setEditingPrice(true)}
+              title={code.is_purchased ? "Cannot edit sold code" : "Click to edit price"}
+            >
+              ${(code.price || 3.0).toFixed(2)}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Price edit actions */}
+      {editingPrice && (
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={handlePriceSave}
+            className="flex-1 px-3 py-1.5 bg-teal text-white text-xs font-semibold rounded-lg hover:bg-teal/90 transition-colors"
+          >
+            Save
+          </button>
+          <button
+            onClick={handlePriceCancel}
+            className="flex-1 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Photo Thumbnails */}
       {code.photos.length > 0 && (

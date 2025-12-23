@@ -286,15 +286,21 @@ const PhotoView = () => {
         // 🎭 MOCK PAYMENT - 테스트용 (실제 결제 없음)
         await new Promise((resolve) => setTimeout(resolve, 2000)); // 결제 시뮬레이션
 
+        // Calculate earnings based on price
+        const price = parseFloat(codeData.price) || 3.0;
+        const photographerShare = price * 0.6667; // 66.67%
+        const platformFee = price - photographerShare;
+
         // Create transaction record
         const { error: txError } = await supabase.from('transactions').insert([
           {
             photo_code_id: codeData.id,
             buyer_id: user?.id || null,
             photographer_id: photoData.photographer_id,
-            amount: 3.0,
-            photographer_earnings: 2.0,
-            platform_fee: 1.0,
+            amount: price,
+            photographer_earnings: photographerShare,
+            platform_fee: platformFee,
+            photographer_share_percentage: 66.67,
             payment_method: 'mock_test',
             payment_status: 'completed',
             stripe_payment_id: `mock_${Date.now()}`,
@@ -316,7 +322,7 @@ const PhotoView = () => {
         // Update photographer earnings
         await supabase.rpc('increment_photographer_earnings', {
           p_photographer_id: photoData.photographer_id,
-          p_amount: 2.0,
+          p_amount: photographerShare,
         });
 
         // Update photo status and counts
@@ -355,12 +361,22 @@ const PhotoView = () => {
         setTimeout(() => setShowSuccess(false), 3000);
       } else {
         // 💳 REAL STRIPE PAYMENT
+        const price = parseFloat(codeData.price) || 3.0;
+
+        console.log('[Payment Debug] Request payload:', {
+          amount: price,
+          photoCodeId: codeData.id,
+          buyerId: user?.id || null,
+          photographerId: photoData.photographer_id,
+          codeData: codeData,
+        });
+
         // Create Payment Intent via Supabase Edge Function
         const { data: functionData, error: functionError } = await supabase.functions.invoke(
           'create-payment-intent',
           {
             body: {
-              amount: 3.0,
+              amount: price,
               photoCodeId: codeData.id,
               buyerId: user?.id || null,
               photographerId: photoData.photographer_id,
@@ -368,7 +384,10 @@ const PhotoView = () => {
           }
         );
 
+        console.log('[Payment Debug] Function response:', { functionData, functionError });
+
         if (functionError || !functionData?.clientSecret) {
+          console.error('[Payment Debug] Error details:', functionError);
           throw new Error(functionError?.message || 'Failed to initialize payment');
         }
 
@@ -386,28 +405,40 @@ const PhotoView = () => {
 
   const handlePaymentSuccess = async (paymentIntent) => {
     try {
+      console.log('[Payment Success] Starting post-payment processing...', paymentIntent);
       setPurchasing(true);
       setShowPaymentModal(false);
 
+      // Calculate earnings based on price
+      const price = parseFloat(codeData.price) || 3.0;
+      const photographerShare = price * 0.6667; // 66.67%
+      const platformFee = price - photographerShare;
+
+      console.log('[Payment Success] Creating transaction record...');
       // Create transaction record
       const { error: txError } = await supabase.from('transactions').insert([
         {
           photo_code_id: codeData.id,
           buyer_id: user?.id || null,
           photographer_id: photoData.photographer_id,
-          amount: 3.0,
-          photographer_earnings: 2.0,
-          platform_fee: 1.0,
+          amount: price,
+          photographer_earnings: photographerShare,
+          platform_fee: platformFee,
+          photographer_share_percentage: 66.67,
           payment_method: 'stripe',
           payment_status: 'completed',
           stripe_payment_id: paymentIntent.id,
         },
       ]);
 
-      if (txError) throw txError;
+      if (txError) {
+        console.error('[Payment Success] Transaction error:', txError);
+        throw txError;
+      }
 
+      console.log('[Payment Success] Updating photo code...');
       // Update photo code as purchased
-      await supabase
+      const { error: codeError } = await supabase
         .from('photo_codes')
         .update({
           is_purchased: true,
@@ -416,47 +447,89 @@ const PhotoView = () => {
         })
         .eq('id', codeData.id);
 
-      // Update photographer earnings
-      await supabase.rpc('increment_photographer_earnings', {
-        p_photographer_id: photoData.photographer_id,
-        p_amount: 2.0,
-      });
+      if (codeError) {
+        console.error('[Payment Success] Code update error:', codeError);
+      }
 
-      // Update photo status and counts
-      await supabase
-        .from('photos')
-        .update({
-          status: 'sold',
-          downloads_count: (photoData.downloads_count || 0) + 1,
-        })
-        .eq('id', photoData.id);
+      console.log('[Payment Success] Updating photographer earnings...');
+      // Update photographer earnings - Trigger handles this automatically now
 
-      // Download original
-      const { data: originalUrl } = await supabase.storage
-        .from('photos-original')
-        .createSignedUrl(photoData.file_url, 60 * 60);
+      // Update photo status and counts (only if photoData exists with ID)
+      if (photoData?.id) {
+        console.log('[Payment Success] Updating photo status...');
+        const { error: photoError } = await supabase
+          .from('photos')
+          .update({
+            status: 'sold',
+            downloads_count: (photoData.downloads_count || 0) + 1,
+          })
+          .eq('id', photoData.id);
 
-      if (originalUrl?.signedUrl) {
-        const response = await fetch(originalUrl.signedUrl);
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
+        if (photoError) {
+          console.error('[Payment Success] Photo update error:', photoError);
+          // Don't throw - this is not critical
+        }
+      } else {
+        console.warn('[Payment Success] No photoData.id, skipping photo update');
+      }
 
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = `snappo-${code}-original.jpg`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+      // Download original - only if we have a valid file_url
+      if (photoData?.file_url) {
+        console.log('[Payment Success] Downloading original photo...');
+        const { data: originalUrl, error: urlError } = await supabase.storage
+          .from('photos-original')
+          .createSignedUrl(photoData.file_url, 60 * 60);
 
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+        if (urlError) {
+          console.error('[Payment Success] Signed URL error:', urlError);
+        } else if (originalUrl?.signedUrl) {
+          try {
+            const response = await fetch(originalUrl.signedUrl);
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `snappo-${code}-original.jpg`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+            console.log('[Payment Success] Download initiated');
+          } catch (downloadErr) {
+            console.error('[Payment Success] Download error:', downloadErr);
+          }
+        }
+      } else {
+        console.warn('[Payment Success] No photoData.file_url, skipping download');
       }
 
       setCodeData({ ...codeData, is_purchased: true });
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
+      console.log('[Payment Success] Complete!');
     } catch (err) {
       console.error('Post-payment error:', err);
-      alert('Payment succeeded but failed to process. Please contact support.');
+      console.error('Error details:', {
+        message: err.message,
+        code: err.code,
+        details: err.details,
+        hint: err.hint,
+      });
+
+      // Show detailed error on mobile for debugging
+      const errorDetails = `
+Error: ${err.message || 'Unknown error'}
+Code: ${err.code || 'N/A'}
+Details: ${err.details || 'N/A'}
+Hint: ${err.hint || 'N/A'}
+
+PhotoData ID: ${photoData?.id || 'NULL'}
+File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
+      `.trim();
+
+      alert(`Payment succeeded but failed to process.\n\n${errorDetails}\n\nPlease contact support.`);
     } finally {
       setPurchasing(false);
     }
@@ -851,7 +924,7 @@ const PhotoView = () => {
                     whileTap={{ scale: 0.98 }}
                     className="w-full px-8 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-2xl shadow-lg disabled:opacity-50"
                   >
-                    {purchasing ? 'Processing...' : `🔓 Unlock All Photos $3`}
+                    {purchasing ? 'Processing...' : `🔓 Unlock All Photos $${(parseFloat(codeData?.price) || 3.0).toFixed(2)}`}
                   </motion.button>
                 </div>
               </div>
@@ -916,7 +989,7 @@ const PhotoView = () => {
           onClose={() => setShowPaymentModal(false)}
           onSuccess={handlePaymentSuccess}
           clientSecret={clientSecret}
-          amount={3.0}
+          amount={parseFloat(codeData?.price) || 3.0}
         />
       </div>
     </div>

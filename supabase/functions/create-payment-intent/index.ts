@@ -41,8 +41,12 @@ serve(async (req) => {
         .eq('id', photographerId)
         .single()
 
-      if (!photographerError && photographerData?.stripe_account_id && photographerData?.stripe_charges_enabled) {
+      // Only use Stripe Connect if account is fully verified and charges are enabled
+      if (!photographerError && photographerData?.stripe_account_id && photographerData?.stripe_charges_enabled === true) {
         stripeAccountId = photographerData.stripe_account_id
+        console.log('Using Stripe Connect for photographer:', photographerId)
+      } else {
+        console.log('Photographer not connected to Stripe, using direct payment')
       }
     }
 
@@ -50,8 +54,8 @@ serve(async (req) => {
     const paymentIntentConfig: any = {
       amount: Math.round(amount * 100), // Convert to cents
       currency: 'usd',
-      // Enable Card, Link, and PayPal (US account)
-      payment_method_types: ['card', 'link', 'paypal'],
+      // Enable Card and Link (PayPal requires additional setup in Stripe Dashboard)
+      payment_method_types: ['card', 'link'],
       metadata: {
         photoCodeId,
         buyerId: buyerId || 'guest',
@@ -61,12 +65,19 @@ serve(async (req) => {
 
     // If photographer has Stripe Connect, add automatic transfer
     if (stripeAccountId) {
-      // Platform fee: $1.00 (100 cents)
-      // Photographer receives: $2.00 (automatically transferred)
-      paymentIntentConfig.application_fee_amount = 100 // $1 platform fee
+      // Photographer receives 66.67% of the sale
+      // Platform keeps 33.33%
+      const photographerShare = Math.round(amount * 100 * 0.6667) // 66.67% in cents
+      const platformFee = Math.round(amount * 100) - photographerShare // Remaining goes to platform
+
+      console.log('Adding Stripe Connect transfer:', { photographerShare, platformFee, stripeAccountId })
+
+      paymentIntentConfig.application_fee_amount = platformFee
       paymentIntentConfig.transfer_data = {
         destination: stripeAccountId,
       }
+    } else {
+      console.log('No Stripe Connect - direct payment to platform')
     }
 
     // Create a PaymentIntent with the order amount and currency

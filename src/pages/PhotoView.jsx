@@ -251,17 +251,58 @@ const PhotoView = () => {
       // Fetch the image as a blob to ensure actual file download
       const response = await fetch(samplePhoto.display_url);
       const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
 
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `snappo-${code}-sample.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Detect if mobile
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-      // Clean up the blob URL after a short delay
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      console.log('[Free Download] Mobile detection:', {
+        isMobile,
+        hasShare: !!navigator.share,
+        userAgent: navigator.userAgent
+      });
+
+      if (isMobile) {
+        // Mobile: Try to use Web Share API first, fallback to opening in new tab
+        if (navigator.share) {
+          try {
+            const file = new File([blob], `snappo-${code}-sample.jpg`, { type: 'image/jpeg' });
+
+            console.log('[Free Download] Attempting Web Share API...');
+
+            // Try sharing directly without canShare check (iOS issue)
+            await navigator.share({
+              files: [file],
+              title: 'Snappo Sample Photo',
+              text: 'Save this sample photo to your camera roll',
+            });
+            console.log('[Free Download] Shared via Web Share API');
+          } catch (shareErr) {
+            console.log('[Free Download] Share failed:', shareErr.message);
+            // Fallback: Open in new tab
+            const blobUrl = URL.createObjectURL(blob);
+            window.open(blobUrl, '_blank');
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
+          }
+        } else {
+          console.log('[Free Download] No share API, using new tab');
+          // No share API - open in new tab
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank');
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+          alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
+        }
+      } else {
+        // Desktop: Standard download
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `snappo-${code}-sample.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+      }
 
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
@@ -490,27 +531,29 @@ const PhotoView = () => {
             // Detect if mobile
             const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
+            console.log('[Payment Success] Mobile detection:', {
+              isMobile,
+              hasShare: !!navigator.share,
+              userAgent: navigator.userAgent
+            });
+
             if (isMobile) {
               // Mobile: Try to use Web Share API first, fallback to opening in new tab
-              if (navigator.share && navigator.canShare) {
+              if (navigator.share) {
                 try {
-                  const file = new File([blob], `snappo-${code}-original.jpg`, { type: blob.type });
-                  if (navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                      files: [file],
-                      title: 'Your Snappo Photo',
-                      text: 'Save this photo to your camera roll',
-                    });
-                    console.log('[Payment Success] Shared via Web Share API');
-                  } else {
-                    // Fallback: Open in new tab so user can long-press to save
-                    const blobUrl = URL.createObjectURL(blob);
-                    window.open(blobUrl, '_blank');
-                    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-                    alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
-                  }
+                  const file = new File([blob], `snappo-${code}-original.jpg`, { type: 'image/jpeg' });
+
+                  console.log('[Payment Success] Attempting Web Share API...');
+
+                  // Try sharing directly without canShare check (iOS issue)
+                  await navigator.share({
+                    files: [file],
+                    title: 'Your Snappo Photo',
+                    text: 'Save this photo to your camera roll',
+                  });
+                  console.log('[Payment Success] Shared via Web Share API');
                 } catch (shareErr) {
-                  console.log('[Payment Success] Share failed, opening in new tab:', shareErr);
+                  console.log('[Payment Success] Share failed:', shareErr.message);
                   // Fallback: Open in new tab
                   const blobUrl = URL.createObjectURL(blob);
                   window.open(blobUrl, '_blank');
@@ -518,6 +561,7 @@ const PhotoView = () => {
                   alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
                 }
               } else {
+                console.log('[Payment Success] No share API, using new tab');
                 // No share API - open in new tab
                 const blobUrl = URL.createObjectURL(blob);
                 window.open(blobUrl, '_blank');
@@ -827,13 +871,6 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-semibold text-gray-500 mb-1">PREVIEW TITLE</p>
-                  <h3 className="text-3xl font-bold text-navy">
-                    {photoData?.title || 'Untitled'}
-                  </h3>
-                </div>
-
                 {photoData?.description && (
                   <p className="text-gray-600 text-lg leading-relaxed">{photoData.description}</p>
                 )}

@@ -11,6 +11,7 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
   const [formData, setFormData] = useState({
     note: '',
     tags: '',
+    price: 3.00,
   });
 
   const handleGenerate = async () => {
@@ -35,6 +36,7 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
             code: codeData,
             note: formData.note.trim() || null,
             tags: tags.length > 0 ? tags : null,
+            price: parseFloat(formData.price),
             expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(), // 72 hours
             shared_at: new Date().toISOString(), // Set shared_at immediately as code is shareable
           },
@@ -72,7 +74,7 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
   const handleClose = () => {
     setStep(1);
     setGeneratedCode(null);
-    setFormData({ note: '', tags: '' });
+    setFormData({ note: '', tags: '', price: 3.00 });
     onClose();
   };
 
@@ -169,6 +171,31 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
                         />
                         <p className="text-xs text-gray-500 mt-1">
                           Separate tags with commas
+                        </p>
+                      </div>
+
+                      {/* Price */}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Price (USD)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
+                            $
+                          </span>
+                          <input
+                            type="number"
+                            min="3"
+                            step="0.01"
+                            value={formData.price}
+                            onChange={(e) =>
+                              setFormData({ ...formData, price: Math.max(3, parseFloat(e.target.value) || 3) })
+                            }
+                            className="w-full pl-8 pr-4 py-3 rounded-xl border border-gray-300 focus:border-teal focus:ring-2 focus:ring-teal/20 outline-none transition-all"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Minimum: $3.00 • You earn 67% (${((formData.price || 3) * 0.67).toFixed(2)})
                         </p>
                       </div>
 

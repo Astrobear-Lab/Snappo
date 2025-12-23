@@ -486,17 +486,57 @@ const PhotoView = () => {
           try {
             const response = await fetch(originalUrl.signedUrl);
             const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
 
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = `snappo-${code}-original.jpg`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            // Detect if mobile
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
-            console.log('[Payment Success] Download initiated');
+            if (isMobile) {
+              // Mobile: Try to use Web Share API first, fallback to opening in new tab
+              if (navigator.share && navigator.canShare) {
+                try {
+                  const file = new File([blob], `snappo-${code}-original.jpg`, { type: blob.type });
+                  if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                      files: [file],
+                      title: 'Your Snappo Photo',
+                      text: 'Save this photo to your camera roll',
+                    });
+                    console.log('[Payment Success] Shared via Web Share API');
+                  } else {
+                    // Fallback: Open in new tab so user can long-press to save
+                    const blobUrl = URL.createObjectURL(blob);
+                    window.open(blobUrl, '_blank');
+                    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                    alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
+                  }
+                } catch (shareErr) {
+                  console.log('[Payment Success] Share failed, opening in new tab:', shareErr);
+                  // Fallback: Open in new tab
+                  const blobUrl = URL.createObjectURL(blob);
+                  window.open(blobUrl, '_blank');
+                  setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                  alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
+                }
+              } else {
+                // No share API - open in new tab
+                const blobUrl = URL.createObjectURL(blob);
+                window.open(blobUrl, '_blank');
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                alert('Long-press the image and tap "Add to Photos" to save to your camera roll.');
+              }
+            } else {
+              // Desktop: Standard download
+              const blobUrl = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = blobUrl;
+              link.download = `snappo-${code}-original.jpg`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+            }
+
+            console.log('[Payment Success] Download/share initiated');
           } catch (downloadErr) {
             console.error('[Payment Success] Download error:', downloadErr);
           }

@@ -14,6 +14,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
   const [editedNote, setEditedNote] = useState(code?.note || '');
   const [editedTags, setEditedTags] = useState(code?.tags?.join(', ') || '');
+  const [editedPrice, setEditedPrice] = useState(code?.price || '3.00');
 
   useEffect(() => {
     if (code) {
@@ -21,6 +22,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
       setPhotos(code?.photos || []);
       setEditedNote(code?.note || '');
       setEditedTags(code?.tags?.join(', ') || '');
+      setEditedPrice(code?.price || '3.00');
       setIsEditingMetadata(false);
     }
   }, [code]);
@@ -157,11 +159,14 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
         .map((t) => t.trim())
         .filter(Boolean);
 
+      const priceValue = parseFloat(editedPrice) || 3.0;
+
       const { error } = await supabase
         .from('photo_codes')
         .update({
           note: editedNote.trim() || null,
           tags: tags.length > 0 ? tags : null,
+          price: priceValue,
         })
         .eq('id', localCode.id);
 
@@ -172,6 +177,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
         ...localCode,
         note: editedNote.trim() || '',
         tags: tags,
+        price: priceValue,
       });
 
       await fetchCodes();
@@ -185,6 +191,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const handleCancelEdit = () => {
     setEditedNote(localCode?.note || '');
     setEditedTags(localCode?.tags?.join(', ') || '');
+    setEditedPrice(localCode?.price || '3.00');
     setIsEditingMetadata(false);
   };
 

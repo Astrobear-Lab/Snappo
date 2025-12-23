@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Elements, PaymentElement, ExpressCheckoutElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 
@@ -177,7 +177,9 @@ const PaymentForm = ({ onSuccess, onCancel, amount }) => {
 };
 
 const PaymentModal = ({ isOpen, onClose, onSuccess, clientSecret, amount }) => {
-  if (!clientSecret) return null;
+  // Return null when not open OR no clientSecret to fully unmount Stripe Elements
+  // This prevents the Stripe Link floating button from appearing in bottom right
+  if (!isOpen || !clientSecret) return null;
 
   const options = {
     clientSecret,
@@ -197,56 +199,52 @@ const PaymentModal = ({ isOpen, onClose, onSuccess, clientSecret, amount }) => {
   };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
-          onClick={onClose}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-8"
-          >
-            <div className="text-center mb-6">
-              <div className="text-5xl mb-3">🔒</div>
-              <h2 className="text-3xl font-bold text-navy mb-2">Secure Payment</h2>
-              <p className="text-gray-600">Unlock your photos in full quality</p>
-            </div>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto p-8"
+      >
+        <div className="text-center mb-6">
+          <div className="text-5xl mb-3">🔒</div>
+          <h2 className="text-3xl font-bold text-navy mb-2">Secure Payment</h2>
+          <p className="text-gray-600">Unlock your photos in full quality</p>
+        </div>
 
-            <div className="mb-6 p-4 bg-gradient-to-r from-teal/5 to-cyan/5 border border-teal/15 rounded-2xl">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">📸</span>
-                  <span className="text-gray-700 font-medium">Total</span>
-                </div>
-                <span className="text-2xl font-bold text-teal">${amount.toFixed(2)}</span>
-              </div>
-              <p className="text-xs text-gray-500 mt-2 text-center">One-time payment • Instant access</p>
+        <div className="mb-6 p-4 bg-gradient-to-r from-teal/5 to-cyan/5 border border-teal/15 rounded-2xl">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">📸</span>
+              <span className="text-gray-700 font-medium">Total</span>
             </div>
+            <span className="text-2xl font-bold text-teal">${amount.toFixed(2)}</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2 text-center">One-time payment • Instant access</p>
+        </div>
 
-            <Elements stripe={stripePromise} options={options}>
-              <PaymentForm onSuccess={onSuccess} onCancel={onClose} amount={amount} />
-            </Elements>
+        <Elements stripe={stripePromise} options={options}>
+          <PaymentForm onSuccess={onSuccess} onCancel={onClose} amount={amount} />
+        </Elements>
 
-            <div className="mt-6 text-center space-y-2">
-              <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
-                <span>🔐</span>
-                <span>Secured by <span className="font-semibold">Stripe</span></span>
-              </div>
-              <p className="text-xs text-gray-400">
-                Your payment information is encrypted and secure
-              </p>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        <div className="mt-6 text-center space-y-2">
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+            <span>🔐</span>
+            <span>Secured by <span className="font-semibold">Stripe</span></span>
+          </div>
+          <p className="text-xs text-gray-400">
+            Your payment information is encrypted and secure
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 };
 

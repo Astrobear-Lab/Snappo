@@ -517,7 +517,19 @@ const PhotoView = () => {
         details: err.details,
         hint: err.hint,
       });
-      alert('Payment succeeded but failed to process. Please contact support.');
+
+      // Show detailed error on mobile for debugging
+      const errorDetails = `
+Error: ${err.message || 'Unknown error'}
+Code: ${err.code || 'N/A'}
+Details: ${err.details || 'N/A'}
+Hint: ${err.hint || 'N/A'}
+
+PhotoData ID: ${photoData?.id || 'NULL'}
+File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
+      `.trim();
+
+      alert(`Payment succeeded but failed to process.\n\n${errorDetails}\n\nPlease contact support.`);
     } finally {
       setPurchasing(false);
     }

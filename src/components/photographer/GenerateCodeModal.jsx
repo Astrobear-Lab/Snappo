@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import QRDisplay from './QRDisplay';
 
 const GenerateCodeModal = ({ isOpen, onClose }) => {
-  const { createCode, fetchCodes } = usePhotographer();
+  const { createCode, fetchCodes, photographerProfile } = usePhotographer();
   const [step, setStep] = useState(1); // 1: form, 2: success
   const [generatedCode, setGeneratedCode] = useState(null);
   const [formData, setFormData] = useState({
@@ -16,6 +16,10 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
 
   const handleGenerate = async () => {
     try {
+      if (!photographerProfile) {
+        throw new Error('Photographer profile not found. Please refresh the page.');
+      }
+
       const tags = formData.tags
         .split(',')
         .map((t) => t.trim())
@@ -28,12 +32,13 @@ const GenerateCodeModal = ({ isOpen, onClose }) => {
 
       if (codeError) throw codeError;
 
-      // Create photo code record (without photo_id for now)
+      // Create photo code record with photographer_id
       const { data: photoCodeData, error: photoCodeError } = await supabase
         .from('photo_codes')
         .insert([
           {
             code: codeData,
+            photographer_id: photographerProfile.id, // Add photographer_id
             note: formData.note.trim() || null,
             tags: tags.length > 0 ? tags : null,
             price: parseFloat(formData.price),

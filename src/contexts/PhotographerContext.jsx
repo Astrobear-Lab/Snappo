@@ -221,8 +221,8 @@ export const PhotographerProvider = ({ children }) => {
 
       console.log('[PhotographerContext] Photographer profile found, fetching codes...');
 
-      // Fetch codes and related photos through code_photos
-      console.log('[PhotographerContext] Querying photo_codes with relationships...');
+      // Fetch codes belonging to this photographer (using photographer_id)
+      console.log('[PhotographerContext] Querying photo_codes for photographer:', profile.id);
       const { data: codesData, error: codesError } = await supabase
         .from('photo_codes')
         .select(`
@@ -256,6 +256,7 @@ export const PhotographerProvider = ({ children }) => {
             )
           )
         `)
+        .eq('photographer_id', profile.id)
         .order('created_at', { ascending: false });
 
       console.log('[PhotographerContext] Codes query result:', { codesData, codesError });

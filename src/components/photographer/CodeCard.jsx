@@ -1,21 +1,10 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useRef } from 'react';
-import { useAuth } from '../../contexts/AuthContext';
-import { usePhotographer } from '../../contexts/PhotographerContext';
-import { supabase } from '../../lib/supabase';
-import { blurImage } from '../../lib/imageUtils';
-import exifr from 'exifr';
+import { useState } from 'react';
 import StatusPill from './StatusPill';
 import QRDisplay from './QRDisplay';
 
-const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
-  const { user } = useAuth();
-  const { fetchCodes, updateCodePrice } = usePhotographer();
+const CodeCard = ({ code, onDetailClick }) => {
   const [showQR, setShowQR] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [editingPrice, setEditingPrice] = useState(false);
-  const [newPrice, setNewPrice] = useState(code.price || 3.0);
-  const fileInputRef = useRef(null);
 
   // Helper to get photo URL (handles both paths and full URLs)
   const getPhotoUrl = (photo) =>
@@ -43,144 +32,6 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
     return `${days}d left`;
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code.code);
-  };
-
-  const handlePriceSave = async () => {
-    const success = await updateCodePrice(code.id, newPrice);
-    if (success) {
-      setEditingPrice(false);
-    }
-  };
-
-  const handlePriceCancel = () => {
-    setNewPrice(code.price || 3.0);
-    setEditingPrice(false);
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileSelect = async (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-
-    setUploading(true);
-    try {
-      // Get photographer profile
-      const { data: profile, error: profileError } = await supabase
-        .from('photographer_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (profileError || !profile) {
-        throw new Error('Photographer profile not found');
-      }
-
-      // Check if this is the first photo for this code
-      const { data: existingPhotos } = await supabase
-        .from('code_photos')
-        .select('id')
-        .eq('code_id', code.id)
-        .limit(1);
-
-      const isFirstPhoto = !existingPhotos || existingPhotos.length === 0;
-
-      // Upload each file
-      for (const file of files) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        const filePath = `user-${user.id}/${fileName}`;
-
-        // Upload original to private storage
-        const { data: originalData, error: originalError } = await supabase.storage
-          .from('photos-original')
-          .upload(`${filePath}.${fileExt}`, file);
-
-        if (originalError) throw originalError;
-
-        // Create blurred version
-        const blurredBlob = await blurImage(file, 40);
-
-        // Upload blurred version to public storage
-        const { data: blurredData, error: blurredError } = await supabase.storage
-          .from('photos')
-          .upload(`${filePath}-blurred.${fileExt}`, blurredBlob);
-
-        if (blurredError) throw blurredError;
-
-        // Extract EXIF data
-        const exif = await exifr.parse(file).catch(() => null);
-        const capturedAt = exif?.DateTimeOriginal
-          ? new Date(exif.DateTimeOriginal).toISOString()
-          : null;
-        const exifMetadata = exif ? JSON.parse(JSON.stringify(exif, (key, value) =>
-          value instanceof Date ? value.toISOString() : value
-        )) : null;
-
-        // Create photo record
-        const { data: photoData, error: photoError } = await supabase
-          .from('photos')
-          .insert([
-            {
-              photographer_id: profile.id,
-              file_url: originalData.path,
-              watermarked_url: blurredData.path,
-              title: file.name,
-              file_size: file.size,
-              status: 'approved',
-              is_sample: false,
-              captured_at: capturedAt,
-              exif_metadata: exifMetadata,
-            },
-          ])
-          .select()
-          .single();
-
-        if (photoError) throw photoError;
-
-        // Link to code
-        const { error: linkError } = await supabase
-          .from('code_photos')
-          .insert([
-            {
-              code_id: code.id,
-              photo_id: photoData.id,
-            },
-          ]);
-
-        if (linkError) throw linkError;
-      }
-
-      // Set uploaded_at and published_at timestamps if this is the first photo
-      if (isFirstPhoto) {
-        const now = new Date().toISOString();
-        await supabase
-          .from('photo_codes')
-          .update({
-            uploaded_at: now,
-            published_at: now
-          })
-          .eq('id', code.id);
-      }
-
-      // Refresh codes
-      await fetchCodes();
-      alert(`${files.length} photo${files.length > 1 ? 's' : ''} uploaded successfully!`);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      alert('Failed to upload photos: ' + error.message);
-    } finally {
-      setUploading(false);
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
 
   return (
     <motion.div
@@ -270,52 +121,11 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Price</div>
-          {editingPrice ? (
-            <div className="flex items-center justify-center gap-1">
-              <span className="text-xs text-gray-500">$</span>
-              <input
-                type="number"
-                min="3"
-                step="0.01"
-                value={newPrice}
-                onChange={(e) => setNewPrice(Math.max(3, parseFloat(e.target.value) || 3))}
-                className="w-14 px-1 py-0.5 text-xs font-bold text-center border border-teal rounded focus:outline-none focus:ring-1 focus:ring-teal"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handlePriceSave();
-                  if (e.key === 'Escape') handlePriceCancel();
-                }}
-              />
-            </div>
-          ) : (
-            <div
-              className="font-bold text-teal cursor-pointer hover:bg-teal/10 rounded px-1 transition-colors"
-              onClick={() => !code.is_purchased && setEditingPrice(true)}
-              title={code.is_purchased ? "Cannot edit sold code" : "Click to edit price"}
-            >
-              ${(code.price || 3.0).toFixed(2)}
-            </div>
-          )}
+          <div className="font-bold text-teal">
+            ${(code.price || 3.0).toFixed(2)}
+          </div>
         </div>
       </div>
-
-      {/* Price edit actions */}
-      {editingPrice && (
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={handlePriceSave}
-            className="flex-1 px-3 py-1.5 bg-teal text-white text-xs font-semibold rounded-lg hover:bg-teal/90 transition-colors"
-          >
-            Save
-          </button>
-          <button
-            onClick={handlePriceCancel}
-            className="flex-1 px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
 
       {/* Photo Thumbnails */}
       {code.photos.length > 0 && (
@@ -357,48 +167,15 @@ const CodeCard = ({ code, onUploadClick, onDetailClick }) => {
         </span>
       </div>
 
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept="image/*"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
-
       {/* Actions */}
-      <div className="flex gap-2">
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={handleCopy}
-          className="flex-1 py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm transition-colors"
-        >
-          📋 Copy
-        </motion.button>
-
-        {(code.status === 'pending_upload' || code.status === 'published') && (
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleUploadClick}
-            disabled={uploading}
-            className={`flex-1 py-2 px-3 ${uploading ? 'bg-gray-400' : 'bg-teal hover:bg-teal/90'} text-white font-semibold rounded-lg text-sm transition-colors`}
-          >
-            {uploading ? '⏳ Uploading...' : `📸 ${code.status === 'pending_upload' ? 'Upload' : 'Add Photos'}`}
-          </motion.button>
-        )}
-
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => onDetailClick(code)}
-          className="py-2 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm transition-colors"
-        >
-          →
-        </motion.button>
-      </div>
+      <motion.button
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        onClick={() => onDetailClick(code)}
+        className="w-full py-2.5 px-4 bg-teal hover:bg-teal/90 text-white font-semibold rounded-lg text-sm transition-colors"
+      >
+        View Details →
+      </motion.button>
     </motion.div>
   );
 };

@@ -18,6 +18,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import PhotoMetadataAccordion from './PhotoMetadataAccordion';
+import NotificationModal from '../NotificationModal';
 
 const TimelineMatchPanel = () => {
   const { user } = useAuth();
@@ -29,6 +30,14 @@ const TimelineMatchPanel = () => {
   const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
   const [autoDismissedPhotos, setAutoDismissedPhotos] = useState({});
   const [detailPhoto, setDetailPhoto] = useState(null);
+
+  // Notification modal state
+  const [notification, setNotification] = useState({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
 
   const serializeExif = useCallback((exif) => {
     if (!exif) return null;
@@ -268,7 +277,12 @@ const TimelineMatchPanel = () => {
   // Upload all matched photos
   const handleUploadAll = async () => {
     if (Object.keys(photoAssignments).length === 0) {
-      alert('No photos matched to codes');
+      setNotification({
+        isOpen: true,
+        type: 'warning',
+        title: 'No Matches Found',
+        message: 'Please match photos to codes before uploading'
+      });
       return;
     }
 
@@ -391,10 +405,21 @@ const TimelineMatchPanel = () => {
       setAutoDismissedPhotos({});
       setSamplePhotos({});
 
-      alert('All photos uploaded successfully!');
+      const uploadedCount = Object.keys(photoAssignments).length;
+      setNotification({
+        isOpen: true,
+        type: 'success',
+        title: 'Upload Complete!',
+        message: `Successfully uploaded ${uploadedCount} photo${uploadedCount > 1 ? 's' : ''} and matched to codes`
+      });
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Failed to upload photos: ' + error.message);
+      setNotification({
+        isOpen: true,
+        type: 'error',
+        title: 'Upload Failed',
+        message: error.message || 'Failed to upload photos. Please try again.'
+      });
     } finally {
       setUploading(false);
     }
@@ -833,6 +858,15 @@ const TimelineItem = ({
           </div>
         )}
       </div>
+
+      {/* Notification Modal */}
+      <NotificationModal
+        isOpen={notification.isOpen}
+        onClose={() => setNotification({ ...notification, isOpen: false })}
+        type={notification.type}
+        title={notification.title}
+        message={notification.message}
+      />
     </div>
   );
 };

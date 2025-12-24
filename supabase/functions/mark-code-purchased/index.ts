@@ -25,16 +25,20 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
-    // Update photo code as purchased
+    // Update photo code as purchased (and mark as redeemed)
+    const now = new Date().toISOString()
     const { data: updatedCode, error: updateError } = await supabaseClient
       .from('photo_codes')
       .update({
         is_purchased: true,
         purchased_by: buyerId || null,
-        purchased_at: new Date().toISOString(),
+        purchased_at: now,
+        is_redeemed: true,
+        redeemed_by: buyerId || null,
+        redeemed_at: now,
       })
       .eq('id', photoCodeId)
-      .select('id, is_purchased')
+      .select('id, is_purchased, is_redeemed')
       .single()
 
     if (updateError) {

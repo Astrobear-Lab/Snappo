@@ -509,3 +509,206 @@ ON CONFLICT (id) DO NOTHING;
 --    bucket_id = 'photos-original'
 --    AND auth.role() = 'authenticated'
 --    AND (storage.foldername(name))[1] = concat('user-', auth.uid()::text)
+
+-- =====================================================
+-- 6. Privacy Settings for Photographer Profiles
+-- =====================================================
+ALTER TABLE public.photographer_profiles
+ADD COLUMN IF NOT EXISTS privacy_settings JSONB DEFAULT '{
+  "show_bio": true,
+  "show_stats": true,
+  "show_achievements": true
+}'::jsonb;
+
+-- =====================================================
+-- 7. Photographer Achievements Table
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.photographer_achievements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  photographer_id UUID REFERENCES public.photographer_profiles(id) ON DELETE CASCADE,
+  achievement_type TEXT NOT NULL,
+  achievement_name TEXT NOT NULL,
+  description TEXT,
+  icon TEXT,
+  earned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+  UNIQUE(photographer_id, achievement_type)
+);
+
+-- Enable RLS
+ALTER TABLE public.photographer_achievements ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Achievements viewable by everyone" ON public.photographer_achievements;
+DROP POLICY IF EXISTS "System can insert achievements" ON public.photographer_achievements;
+
+-- Policies
+CREATE POLICY "Achievements viewable by everyone"
+  ON public.photographer_achievements FOR SELECT
+  USING (true);
+
+CREATE POLICY "System can insert achievements"
+  ON public.photographer_achievements FOR INSERT
+  WITH CHECK (true);
+
+-- Index for performance
+CREATE INDEX IF NOT EXISTS idx_achievements_photographer_id ON public.photographer_achievements(photographer_id);
+
+-- =====================================================
+-- 8. Achievement Check and Award Function
+-- =====================================================
+CREATE OR REPLACE FUNCTION check_and_award_achievements()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_photographer_id UUID;
+  v_total_downloads INTEGER;
+  v_total_views INTEGER;
+  v_total_photos INTEGER;
+  v_total_earnings DECIMAL;
+  v_total_sales INTEGER;
+  v_is_verified BOOLEAN;
+BEGIN
+  -- Get photographer_id based on trigger context
+  IF TG_TABLE_NAME = 'transactions' THEN
+    v_photographer_id := NEW.photographer_id;
+  ELSIF TG_TABLE_NAME = 'photos' THEN
+    v_photographer_id := NEW.photographer_id;
+  ELSIF TG_TABLE_NAME = 'photographer_profiles' THEN
+    v_photographer_id := NEW.id;
+  END IF;
+
+  IF v_photographer_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  -- Get current stats from photos
+  SELECT
+    COALESCE(SUM(downloads_count), 0),
+    COALESCE(SUM(views_count), 0),
+    COUNT(id)
+  INTO v_total_downloads, v_total_views, v_total_photos
+  FROM photos
+  WHERE photographer_id = v_photographer_id;
+
+  -- Get earnings and sales from photographer_profiles
+  SELECT total_earnings, total_photos_sold, verified
+  INTO v_total_earnings, v_total_sales, v_is_verified
+  FROM photographer_profiles
+  WHERE id = v_photographer_id;
+
+  -- Award: First Sale
+  IF v_total_sales >= 1 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'first_sale', 'First Sale', 'Completed your first photo sale', '🏆')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  -- Award: Downloads milestones
+  IF v_total_downloads >= 10 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'downloads_10', 'Rising Star', '10 photos downloaded', '⭐')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  IF v_total_downloads >= 100 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'downloads_100', 'Download Hero', '100 photos downloaded', '🔥')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  IF v_total_downloads >= 1000 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'downloads_1000', 'Download Legend', '1000 photos downloaded', '👑')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  -- Award: Views milestones
+  IF v_total_views >= 100 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'views_100', 'Getting Noticed', '100 photo views', '👀')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  IF v_total_views >= 1000 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'views_1000', 'Popular Choice', '1000 photo views', '📈')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  -- Award: Photos uploaded milestones
+  IF v_total_photos >= 10 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'photos_10', 'Prolific Shooter', '10 photos uploaded', '📷')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  IF v_total_photos >= 50 THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'photos_50', 'Photo Master', '50 photos uploaded', '🎞️')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  -- Award: Verified
+  IF v_is_verified = TRUE THEN
+    INSERT INTO photographer_achievements (photographer_id, achievement_type, achievement_name, description, icon)
+    VALUES (v_photographer_id, 'verified', 'Verified Pro', 'Account verified', '✓')
+    ON CONFLICT (photographer_id, achievement_type) DO NOTHING;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop existing triggers if they exist
+DROP TRIGGER IF EXISTS check_achievements_on_transaction ON public.transactions;
+DROP TRIGGER IF EXISTS check_achievements_on_photo_update ON public.photos;
+DROP TRIGGER IF EXISTS check_achievements_on_profile_update ON public.photographer_profiles;
+
+-- Trigger: After transaction completed
+CREATE TRIGGER check_achievements_on_transaction
+  AFTER INSERT ON transactions
+  FOR EACH ROW
+  WHEN (NEW.payment_status = 'completed')
+  EXECUTE FUNCTION check_and_award_achievements();
+
+-- Trigger: After photo stats update
+CREATE TRIGGER check_achievements_on_photo_update
+  AFTER UPDATE ON photos
+  FOR EACH ROW
+  WHEN (OLD.downloads_count IS DISTINCT FROM NEW.downloads_count
+     OR OLD.views_count IS DISTINCT FROM NEW.views_count)
+  EXECUTE FUNCTION check_and_award_achievements();
+
+-- Trigger: After photo insert
+CREATE TRIGGER check_achievements_on_photo_insert
+  AFTER INSERT ON photos
+  FOR EACH ROW
+  EXECUTE FUNCTION check_and_award_achievements();
+
+-- Trigger: After photographer profile update (for verified status)
+CREATE TRIGGER check_achievements_on_profile_update
+  AFTER UPDATE ON photographer_profiles
+  FOR EACH ROW
+  WHEN (OLD.verified IS DISTINCT FROM NEW.verified)
+  EXECUTE FUNCTION check_and_award_achievements();
+
+-- =====================================================
+-- 9. Function to get photographer public stats
+-- =====================================================
+CREATE OR REPLACE FUNCTION get_photographer_public_stats(p_photographer_id UUID)
+RETURNS JSON AS $$
+DECLARE
+  result JSON;
+BEGIN
+  SELECT json_build_object(
+    'total_downloads', COALESCE(SUM(downloads_count), 0),
+    'total_views', COALESCE(SUM(views_count), 0),
+    'total_photos', COUNT(id)
+  ) INTO result
+  FROM photos
+  WHERE photographer_id = p_photographer_id
+    AND status IN ('approved', 'sold');
+
+  RETURN result;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

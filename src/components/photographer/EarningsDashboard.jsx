@@ -58,6 +58,13 @@ const EarningsDashboard = () => {
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
 
+    // Fetch ALL transactions for total earnings
+    const { data: allTransactions } = await supabase
+      .from('transactions')
+      .select('photographer_earnings')
+      .eq('photographer_id', photographerId)
+      .eq('payment_status', 'completed');
+
     // Fetch this month's transactions
     const { data: monthlyTransactions } = await supabase
       .from('transactions')
@@ -81,7 +88,11 @@ const EarningsDashboard = () => {
       .eq('payment_status', 'completed');
 
     setEarnings({
-      totalEarnings: photographerProfile?.total_earnings || 0,
+      totalEarnings:
+        allTransactions?.reduce(
+          (sum, t) => sum + Number(t.photographer_earnings),
+          0
+        ) || 0,
       thisMonthEarnings:
         monthlyTransactions?.reduce(
           (sum, t) => sum + Number(t.photographer_earnings),

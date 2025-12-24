@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import AuthModal from './AuthModal';
 import BecomePhotographerModal from './BecomePhotographerModal';
+import ProfileSettingsModal from './ProfileSettingsModal';
 
 const Navbar = () => {
   const { user, signOut } = useAuth();
@@ -13,13 +14,17 @@ const Navbar = () => {
   const [authMode, setAuthMode] = useState('login');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [isPhotographerModalOpen, setIsPhotographerModalOpen] = useState(false);
+  const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [photographerProfile, setPhotographerProfile] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
 
   useEffect(() => {
     if (user) {
       fetchPhotographerProfile();
+      fetchUserProfile();
     } else {
       setPhotographerProfile(null);
+      setUserProfile(null);
     }
   }, [user]);
 
@@ -41,6 +46,24 @@ const Navbar = () => {
     }
   };
 
+  const fetchUserProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', error);
+      } else {
+        setUserProfile(data);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
     setShowUserMenu(false);
@@ -55,6 +78,14 @@ const Navbar = () => {
   const handlePhotographerSuccess = () => {
     fetchPhotographerProfile();
     navigate('/dashboard');
+  };
+
+  const handleProfileSettingsClose = () => {
+    setIsProfileSettingsOpen(false);
+    // Refresh user profile after settings modal closes
+    if (user) {
+      fetchUserProfile();
+    }
   };
 
   return (
@@ -88,12 +119,21 @@ const Navbar = () => {
                     whileTap={{ scale: 0.95 }}
                     className="flex items-center gap-3 px-4 py-2 rounded-full bg-gradient-to-r from-teal to-cyan-500 text-white shadow-lg"
                   >
-                    <div className="w-8 h-8 rounded-full bg-white/30 flex items-center justify-center">
-                      <span className="text-lg">
-                        {user.user_metadata?.full_name?.[0]?.toUpperCase() ||
-                          user.email?.[0]?.toUpperCase() ||
-                          '👤'}
-                      </span>
+                    <div className="w-8 h-8 rounded-full bg-white/30 flex items-center justify-center overflow-hidden">
+                      {userProfile?.avatar_url ? (
+                        <img
+                          src={userProfile.avatar_url}
+                          alt="Avatar"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-lg">
+                          {userProfile?.full_name?.[0]?.toUpperCase() ||
+                            user.user_metadata?.full_name?.[0]?.toUpperCase() ||
+                            user.email?.[0]?.toUpperCase() ||
+                            '👤'}
+                        </span>
+                      )}
                     </div>
                     <span className="font-semibold">
                       {user.user_metadata?.full_name || 'Account'}
@@ -163,12 +203,12 @@ const Navbar = () => {
                             <button
                               onClick={() => {
                                 setShowUserMenu(false);
-                                alert('Settings feature coming soon!');
+                                setIsProfileSettingsOpen(true);
                               }}
                               className="w-full px-4 py-2 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
                             >
                               <span>⚙️</span>
-                              <span>Settings</span>
+                              <span>Profile Settings</span>
                             </button>
                           </div>
 
@@ -224,6 +264,12 @@ const Navbar = () => {
         isOpen={isPhotographerModalOpen}
         onClose={() => setIsPhotographerModalOpen(false)}
         onSuccess={handlePhotographerSuccess}
+      />
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal
+        isOpen={isProfileSettingsOpen}
+        onClose={handleProfileSettingsClose}
       />
     </>
   );

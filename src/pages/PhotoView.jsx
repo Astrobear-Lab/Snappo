@@ -4,6 +4,161 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import PaymentModal from '../components/PaymentModal';
+import PhotographerProfileCard from '../components/photographer/PhotographerProfileCard';
+
+// Confetti particle component
+const ConfettiParticle = ({ index }) => {
+  const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
+  const color = colors[index % colors.length];
+  const startX = Math.random() * 100;
+  const endX = startX + (Math.random() - 0.5) * 40;
+  const rotation = Math.random() * 720 - 360;
+  const delay = Math.random() * 0.3;
+  const duration = 2 + Math.random() * 1;
+  const size = 8 + Math.random() * 8;
+  const shape = Math.random() > 0.5 ? 'square' : 'circle';
+
+  return (
+    <motion.div
+      initial={{
+        x: `${startX}vw`,
+        y: -20,
+        rotate: 0,
+        opacity: 1,
+        scale: 1
+      }}
+      animate={{
+        x: `${endX}vw`,
+        y: '110vh',
+        rotate: rotation,
+        opacity: [1, 1, 0.8, 0],
+        scale: [1, 1.2, 1, 0.5]
+      }}
+      transition={{
+        duration: duration,
+        delay: delay,
+        ease: [0.25, 0.46, 0.45, 0.94]
+      }}
+      style={{
+        position: 'fixed',
+        width: size,
+        height: shape === 'square' ? size : size,
+        backgroundColor: color,
+        borderRadius: shape === 'circle' ? '50%' : '2px',
+        zIndex: 100,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+};
+
+// Confetti explosion component
+const ConfettiExplosion = ({ isActive, onComplete }) => {
+  const [particles, setParticles] = useState([]);
+
+  useEffect(() => {
+    if (isActive) {
+      // Create particles in waves
+      const particleCount = 80;
+      setParticles(Array.from({ length: particleCount }, (_, i) => i));
+
+      // Clean up after animation
+      const timer = setTimeout(() => {
+        setParticles([]);
+        onComplete?.();
+      }, 4000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isActive, onComplete]);
+
+  if (!isActive && particles.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 pointer-events-none z-[100] overflow-hidden">
+      {particles.map((index) => (
+        <ConfettiParticle key={index} index={index} total={particles.length} />
+      ))}
+    </div>
+  );
+};
+
+// Payment processing overlay component
+const PaymentProcessingOverlay = ({ isVisible, message = "Processing payment..." }) => {
+  return (
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center"
+        >
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            className="bg-white rounded-3xl p-8 shadow-2xl flex flex-col items-center gap-6 max-w-sm mx-4"
+          >
+            {/* Animated spinner */}
+            <div className="relative w-20 h-20">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-0 border-4 border-teal/20 border-t-teal rounded-full"
+              />
+              <motion.div
+                animate={{ rotate: -360 }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                className="absolute inset-2 border-4 border-cyan-500/20 border-b-cyan-500 rounded-full"
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <motion.span
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="text-2xl"
+                >
+                  💳
+                </motion.span>
+              </div>
+            </div>
+
+            {/* Message */}
+            <div className="text-center">
+              <motion.p
+                animate={{ opacity: [0.7, 1, 0.7] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+                className="text-xl font-semibold text-gray-800"
+              >
+                {message}
+              </motion.p>
+              <p className="text-gray-500 mt-2 text-sm">Please wait...</p>
+            </div>
+
+            {/* Progress dots */}
+            <div className="flex gap-2">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{
+                    scale: [1, 1.3, 1],
+                    backgroundColor: ['#E0E0E0', '#14B8A6', '#E0E0E0']
+                  }}
+                  transition={{
+                    duration: 1,
+                    repeat: Infinity,
+                    delay: i * 0.2
+                  }}
+                  className="w-3 h-3 rounded-full bg-gray-300"
+                />
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
 const PhotoView = () => {
   const { code } = useParams();
@@ -23,10 +178,15 @@ const PhotoView = () => {
   const [timeRemaining, setTimeRemaining] = useState('');
   const [showImageModal, setShowImageModal] = useState(false);
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
+  const [photographerStats, setPhotographerStats] = useState(null);
 
   // Stripe payment states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
+
+  // Payment UX states
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('Processing payment...');
 
   // Mock payment mode (true = 실제 결제 없이 테스트, false = Stripe 실제 결제)
   // TODO: Stripe 키 설정 후 false로 변경
@@ -133,7 +293,19 @@ const PhotoView = () => {
             photographer:photographer_profiles(
               id,
               user_id,
-              profile:profiles(full_name, avatar_url)
+              bio,
+              location,
+              portfolio_url,
+              verified,
+              privacy_settings,
+              profile:profiles(full_name, avatar_url),
+              achievements:photographer_achievements(
+                achievement_type,
+                achievement_name,
+                description,
+                icon,
+                earned_at
+              )
             )
           )
         `)
@@ -260,6 +432,19 @@ const PhotoView = () => {
       const defaultPhoto = samplePhotos.length > 0 ? samplePhotos[0] : photosWithUrls[0];
       setPhotoData(defaultPhoto);
       setAllPhotos(photosWithUrls);
+
+      // Fetch photographer stats if photographer exists
+      if (defaultPhoto?.photographer?.id) {
+        try {
+          const { data: statsData } = await supabase
+            .rpc('get_photographer_public_stats', {
+              p_photographer_id: defaultPhoto.photographer.id
+            });
+          setPhotographerStats(statsData);
+        } catch (statsError) {
+          console.error('[PhotoView] Failed to fetch photographer stats:', statsError);
+        }
+      }
 
       setLoading(false);
     } catch (err) {
@@ -401,13 +586,17 @@ const PhotoView = () => {
 
         if (txError) throw txError;
 
-        // Update photo code as purchased
+        // Update photo code as purchased (and mark as redeemed)
+        const now = new Date().toISOString();
         await supabase
           .from('photo_codes')
           .update({
             is_purchased: true,
             purchased_by: user?.id || null,
-            purchased_at: new Date().toISOString(),
+            purchased_at: now,
+            is_redeemed: true,
+            redeemed_by: user?.id || null,
+            redeemed_at: now,
           })
           .eq('id', codeData.id);
 
@@ -449,8 +638,10 @@ const PhotoView = () => {
         }
 
         setCodeData({ ...codeData, is_purchased: true });
+        setPurchasing(false);
+        setShowConfetti(true);
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        setTimeout(() => setShowSuccess(false), 5000);
       } else {
         // 💳 REAL STRIPE PAYMENT
         const price = parseFloat(codeData.price) || 3.0;
@@ -499,6 +690,7 @@ const PhotoView = () => {
     try {
       console.log('[Payment Success] Starting post-payment processing...', paymentIntent);
       setPurchasing(true);
+      setProcessingMessage('Completing your purchase...');
       setShowPaymentModal(false);
 
       // Calculate earnings based on price
@@ -682,6 +874,7 @@ const PhotoView = () => {
       // Update code data to reflect purchase
       const updatedCodeData = { ...codeData, is_purchased: true };
       setCodeData(updatedCodeData);
+      setShowConfetti(true);
       setShowSuccess(true);
       // Auto-hide success message after 5 seconds
       setTimeout(() => setShowSuccess(false), 5000);
@@ -952,20 +1145,43 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-cream via-white to-peach/20 py-12 px-6">
+      {/* Payment Processing Overlay */}
+      <PaymentProcessingOverlay
+        isVisible={purchasing}
+        message={processingMessage}
+      />
+
+      {/* Confetti Celebration */}
+      <ConfettiExplosion
+        isActive={showConfetti}
+        onComplete={() => setShowConfetti(false)}
+      />
+
       <div className="max-w-6xl mx-auto">
         {/* Success Toast */}
         <AnimatePresence>
           {showSuccess && (
             <motion.div
-              initial={{ opacity: 0, y: -50 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -50 }}
-              className="fixed top-6 right-6 bg-green-500 text-white px-6 py-4 rounded-xl shadow-2xl z-50 flex items-center gap-3"
+              initial={{ opacity: 0, y: -50, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -50, scale: 0.9 }}
+              className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-green-500 to-emerald-500 text-white px-8 py-5 rounded-2xl shadow-2xl z-[90] flex items-center gap-4"
             >
-              <span className="text-2xl">✓</span>
-              <span className="font-semibold">
-                {codeData?.is_purchased ? 'Purchase complete! Download started.' : 'Download started!'}
-              </span>
+              <motion.span
+                animate={{ rotate: [0, 15, -15, 0] }}
+                transition={{ duration: 0.5, repeat: 3 }}
+                className="text-3xl"
+              >
+                🎉
+              </motion.span>
+              <div>
+                <p className="font-bold text-lg">
+                  {codeData?.is_purchased ? 'Purchase Complete!' : 'Download Started!'}
+                </p>
+                <p className="text-sm text-white/90">
+                  {codeData?.is_purchased ? 'Your photos are now unlocked' : 'Check your downloads'}
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1304,24 +1520,10 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
 
           {/* Photographer Info */}
           {photoData?.photographer && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-3xl p-6 shadow-lg"
-            >
-              <h4 className="text-sm font-semibold text-gray-500 mb-3">PHOTOGRAPHED BY</h4>
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-teal to-purple rounded-full flex items-center justify-center text-white font-bold text-xl">
-                  {photoData.photographer.profile?.full_name?.[0] || '📷'}
-                </div>
-                <div>
-                  <p className="font-semibold text-navy">
-                    {photoData.photographer.profile?.full_name || 'Snappo Photographer'}
-                  </p>
-                  <p className="text-sm text-gray-500">Professional Photographer</p>
-                </div>
-              </div>
-            </motion.div>
+            <PhotographerProfileCard
+              photographer={photoData.photographer}
+              stats={photographerStats}
+            />
           )}
         </div>
 

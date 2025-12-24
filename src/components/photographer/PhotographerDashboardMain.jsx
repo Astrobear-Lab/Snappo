@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { usePhotographer } from '../../contexts/PhotographerContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import GenerateCodeModal from './GenerateCodeModal';
 import ActiveCodesBoard from './ActiveCodesBoard';
 import TimelineMatchPanel from './TimelineMatchPanel';
@@ -9,6 +10,9 @@ import CodeDetailDrawer from './CodeDetailDrawer';
 import ToastNotification from './ToastNotification';
 import StripeConnectButton from './StripeConnectButton';
 import EarningsDashboard from './EarningsDashboard';
+import ProfileSettingsModal from '../ProfileSettingsModal';
+import ProfilePrivacySettings from './ProfilePrivacySettings';
+import MyAchievements from './MyAchievements';
 
 const PhotographerDashboardMain = () => {
   const { user } = useAuth();
@@ -18,6 +22,33 @@ const PhotographerDashboardMain = () => {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [selectedCode, setSelectedCode] = useState(null);
   const [showCodeDetail, setShowCodeDetail] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
+
+  // Fetch user profile on mount
+  useEffect(() => {
+    if (user) {
+      fetchUserProfile();
+    }
+  }, [user]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', error);
+      } else {
+        setUserProfile(data);
+      }
+    } catch (err) {
+      console.error('Error:', err);
+    }
+  };
 
   // Update selectedCode when codes array changes (e.g., after sample status update)
   useEffect(() => {
@@ -63,6 +94,14 @@ const PhotographerDashboardMain = () => {
     setActiveView('upload');
   };
 
+  const handleProfileSettingsClose = () => {
+    setShowProfileSettings(false);
+    // Refresh user profile after settings modal closes
+    if (user) {
+      fetchUserProfile();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <ToastNotification />
@@ -91,8 +130,16 @@ const PhotographerDashboardMain = () => {
                 ✨ Generate Code
               </motion.button>
 
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-cyan-500 flex items-center justify-center text-white font-bold">
-                {user?.email?.[0]?.toUpperCase() || 'P'}
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-cyan-500 flex items-center justify-center text-white font-bold overflow-hidden">
+                {userProfile?.avatar_url ? (
+                  <img
+                    src={userProfile.avatar_url}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span>{userProfile?.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'P'}</span>
+                )}
               </div>
             </div>
           </div>
@@ -231,6 +278,9 @@ const PhotographerDashboardMain = () => {
                   </motion.button>
                 </div>
 
+                {/* My Achievements */}
+                <MyAchievements />
+
                 {/* Active Codes Preview */}
                 <ActiveCodesBoard
                   onCodeClick={handleCodeClick}
@@ -295,10 +345,21 @@ const PhotographerDashboardMain = () => {
                   <h2 className="text-2xl font-bold text-gray-800 mb-2">
                     👤 Profile Settings
                   </h2>
-                  <p className="text-gray-600">
-                    Profile customization coming soon...
+                  <p className="text-gray-600 mb-6">
+                    Manage your profile information, bio, and contact details.
                   </p>
+                  <motion.button
+                    onClick={() => setShowProfileSettings(true)}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="px-6 py-3 bg-gradient-to-r from-teal to-cyan-500 text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-shadow"
+                  >
+                    Edit Profile
+                  </motion.button>
                 </div>
+
+                {/* Privacy Settings */}
+                <ProfilePrivacySettings />
               </motion.div>
             )}
           </div>
@@ -315,6 +376,11 @@ const PhotographerDashboardMain = () => {
         code={selectedCode}
         isOpen={showCodeDetail}
         onClose={() => setShowCodeDetail(false)}
+      />
+
+      <ProfileSettingsModal
+        isOpen={showProfileSettings}
+        onClose={handleProfileSettingsClose}
       />
     </div>
   );

@@ -221,14 +221,27 @@ export const PhotographerProvider = ({ children }) => {
 
       console.log('[PhotographerContext] Photographer profile found, fetching codes...');
 
-      // Fetch codes and related photos through code_photos
-      console.log('[PhotographerContext] Querying photo_codes with relationships...');
+      // Fetch codes belonging to this photographer (using photographer_id)
+      console.log('[PhotographerContext] Querying photo_codes for photographer:', profile.id);
       const { data: codesData, error: codesError } = await supabase
         .from('photo_codes')
         .select(`
-          *,
+          id,
+          code,
           note,
           tags,
+          price,
+          is_redeemed,
+          redeemed_at,
+          redeemed_by,
+          is_purchased,
+          purchased_at,
+          purchased_by,
+          uploaded_at,
+          published_at,
+          shared_at,
+          expires_at,
+          created_at,
           code_photos (
             photos (
               id,
@@ -243,9 +256,17 @@ export const PhotographerProvider = ({ children }) => {
             )
           )
         `)
+        .eq('photographer_id', profile.id)
         .order('created_at', { ascending: false });
 
       console.log('[PhotographerContext] Codes query result:', { codesData, codesError });
+
+      // Debug: Log raw uploaded_at values
+      if (codesData) {
+        codesData.forEach(code => {
+          console.log(`[PhotographerContext] Code ${code.code}: uploaded_at = ${code.uploaded_at}, published_at = ${code.published_at}`);
+        });
+      }
 
       if (codesError) {
         console.error('[PhotographerContext] Codes query failed:', codesError);
@@ -322,8 +343,10 @@ export const PhotographerProvider = ({ children }) => {
             })
           ),
           views: 0, // Would need to be tracked separately
-          unlocks: code.is_redeemed ? 1 : 0,
-          unlockedAt: code.redeemed_at ? new Date(code.redeemed_at) : null,
+          unlocks: (code.is_redeemed || code.is_purchased) ? 1 : 0,
+          unlockedAt: code.purchased_at ? new Date(code.purchased_at) : (code.redeemed_at ? new Date(code.redeemed_at) : null),
+          price: code.price || 3.0,
+          is_purchased: code.is_purchased || false,
         };
       }));
 

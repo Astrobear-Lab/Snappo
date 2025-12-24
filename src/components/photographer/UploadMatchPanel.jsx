@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import PhotoMetadataAccordion from './PhotoMetadataAccordion';
 import { blurImage } from '../../lib/imageUtils';
+import NotificationModal from '../NotificationModal';
 
 const UploadMatchPanel = ({ preselectedCode = null }) => {
   const { user } = useAuth();
@@ -22,6 +23,14 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
   const [selectedCode, setSelectedCode] = useState(preselectedCode?.id || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
+
+  // Notification modal state
+  const [notification, setNotification] = useState({
+    isOpen: false,
+    type: 'success',
+    title: '',
+    message: ''
+  });
 
   const unmatchedUploads = uploads.filter((u) => !u.matched);
   const [uploading, setUploading] = useState(false);
@@ -43,7 +52,12 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
 
     if (selectedPhotos.length === 0 || !selectedCode) {
       console.log('[UploadMatchPanel] Validation failed: no photos or code selected');
-      alert('Please select photos and a code');
+      setNotification({
+        isOpen: true,
+        type: 'warning',
+        title: 'Selection Required',
+        message: 'Please select photos and a code to continue'
+      });
       return;
     }
 
@@ -204,7 +218,12 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
       setSelectedCode(preselectedCode?.id || '');
 
       console.log('[UploadMatchPanel] Upload process completed successfully!');
-      alert('Photos uploaded and matched successfully!');
+      setNotification({
+        isOpen: true,
+        type: 'success',
+        title: 'Upload Successful!',
+        message: `${selectedPhotos.length} photo${selectedPhotos.length > 1 ? 's' : ''} uploaded and matched successfully`
+      });
 
     } catch (error) {
       console.error('[UploadMatchPanel] Upload failed with error:', error);
@@ -213,7 +232,12 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
         name: error.name,
         stack: error.stack
       });
-      alert('Failed to upload photos: ' + error.message);
+      setNotification({
+        isOpen: true,
+        type: 'error',
+        title: 'Upload Failed',
+        message: error.message || 'Failed to upload photos. Please try again.'
+      });
     } finally {
       console.log('[UploadMatchPanel] Upload process finished (success or failure)');
       setUploading(false);
@@ -479,6 +503,15 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
           </p>
         </div>
       )}
+
+      {/* Notification Modal */}
+      <NotificationModal
+        isOpen={notification.isOpen}
+        onClose={() => setNotification({ ...notification, isOpen: false })}
+        type={notification.type}
+        title={notification.title}
+        message={notification.message}
+      />
     </div>
   );
 };

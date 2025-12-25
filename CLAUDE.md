@@ -163,8 +163,31 @@ Payment method availability depends on browser, device, and user setup.
 3. **PhotoView** page ([src/pages/PhotoView.jsx](src/pages/PhotoView.jsx)):
    - Fetches photo by code
    - Shows watermarked preview (always accessible)
-   - "Unlock Full Quality $3" button triggers mock/real payment
+   - Checks if user is admin (via `profiles.is_admin` field)
+   - "Unlock Full Quality" button triggers test payment (admin) or real payment (regular user)
    - Downloads original after successful purchase
+
+### Admin Mode (Test Payments)
+
+**Purpose**: Allow testing the purchase flow without real Stripe charges.
+
+**Setup**: See [ADMIN_SETUP.md](ADMIN_SETUP.md) for detailed instructions.
+
+**How it works**:
+- Admin users have `is_admin = true` in the `profiles` table
+- PhotoView automatically detects admin status on page load
+- Admin purchases use simulated payment (2-second delay)
+- Regular users use real Stripe payment
+- Both modes create identical database records
+
+**UI Indicator**:
+- Admin users see a purple badge: "👑 Admin Mode Active"
+- Regular users see standard payment flow
+
+**Setting admin status**:
+```sql
+UPDATE public.profiles SET is_admin = TRUE WHERE email = 'admin@example.com';
+```
 
 ## Development Patterns
 

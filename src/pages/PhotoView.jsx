@@ -188,9 +188,21 @@ const PhotoView = () => {
   const [showConfetti, setShowConfetti] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('Processing payment...');
 
-  // Mock payment mode (true = 실제 결제 없이 테스트, false = Stripe 실제 결제)
-  // TODO: Stripe 키 설정 후 false로 변경
-  const MOCK_PAYMENT = false;
+  // Tip amount state
+  const [selectedTipAmount, setSelectedTipAmount] = useState(3); // Default $3 (minimum)
+  const [customAmount, setCustomAmount] = useState(''); // Custom amount for "Other"
+  const [showCustomInput, setShowCustomInput] = useState(false); // Show custom input
+  const [buyerMessage, setBuyerMessage] = useState(''); // Optional message to photographer
+  const [showMessageForm, setShowMessageForm] = useState(false); // Show message form after purchase
+  const [sendingMessage, setSendingMessage] = useState(false); // Sending message state
+
+  // Admin status state
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminCheckLoading, setAdminCheckLoading] = useState(true);
+
+  // Mock payment mode (true = 테스트 결제, false = 실제 결제)
+  // Admin users automatically use test payment, regular users use live payment
+  const MOCK_PAYMENT = isAdmin;
 
   // Real-time countdown timer
   useEffect(() => {
@@ -229,6 +241,39 @@ const PhotoView = () => {
 
     return () => clearInterval(interval);
   }, [codeData]);
+
+  // Check if current user is admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      if (!user) {
+        setIsAdmin(false);
+        setAdminCheckLoading(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('[Admin Check] Error:', error);
+          setIsAdmin(false);
+        } else {
+          setIsAdmin(data?.is_admin || false);
+        }
+      } catch (err) {
+        console.error('[Admin Check] Failed:', err);
+        setIsAdmin(false);
+      } finally {
+        setAdminCheckLoading(false);
+      }
+    };
+
+    checkAdminStatus();
+  }, [user]);
 
   useEffect(() => {
     if (code) {
@@ -563,12 +608,12 @@ const PhotoView = () => {
         // 🎭 MOCK PAYMENT - 테스트용 (실제 결제 없음)
         await new Promise((resolve) => setTimeout(resolve, 2000)); // 결제 시뮬레이션
 
-        // Calculate earnings based on price
-        const price = parseFloat(codeData.price) || 3.0;
+        // Calculate earnings based on selected tip amount
+        const price = selectedTipAmount;
         const photographerShare = price * 0.6667; // 66.67%
         const platformFee = price - photographerShare;
 
-        // Create transaction record
+        // Create transaction record (without message initially)
         const { error: txError } = await supabase.from('transactions').insert([
           {
             photo_code_id: codeData.id,
@@ -581,6 +626,7 @@ const PhotoView = () => {
             payment_method: 'mock_test',
             payment_status: 'completed',
             stripe_payment_id: `mock_${Date.now()}`,
+            buyer_message: null, // Message can be added later
           },
         ]);
 
@@ -644,7 +690,7 @@ const PhotoView = () => {
         setTimeout(() => setShowSuccess(false), 5000);
       } else {
         // 💳 REAL STRIPE PAYMENT
-        const price = parseFloat(codeData.price) || 3.0;
+        const price = selectedTipAmount;
 
         console.log('[Payment Debug] Request payload:', {
           amount: price,
@@ -693,13 +739,13 @@ const PhotoView = () => {
       setProcessingMessage('Completing your purchase...');
       setShowPaymentModal(false);
 
-      // Calculate earnings based on price
-      const price = parseFloat(codeData.price) || 3.0;
+      // Calculate earnings based on selected tip amount
+      const price = selectedTipAmount;
       const photographerShare = price * 0.6667; // 66.67%
       const platformFee = price - photographerShare;
 
       console.log('[Payment Success] Creating transaction record...');
-      // Create transaction record
+      // Create transaction record (without message initially)
       const { error: txError } = await supabase.from('transactions').insert([
         {
           photo_code_id: codeData.id,
@@ -712,6 +758,7 @@ const PhotoView = () => {
           payment_method: 'stripe',
           payment_status: 'completed',
           stripe_payment_id: paymentIntent.id,
+          buyer_message: null, // Message can be added later
         },
       ]);
 
@@ -1334,10 +1381,96 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
               {/* Success Header */}
               <div className="text-center mb-8">
                 <div className="text-6xl mb-4">🎉</div>
-                <h3 className="text-3xl font-bold text-green-800 mb-2">Full Gallery Unlocked!</h3>
+                <h3 className="text-3xl font-bold text-green-800 mb-2">Gallery Unlocked!</h3>
                 <p className="text-green-700 mb-4">
-                  Enjoy every moment in its original quality. Download all photos below.
+                  Download your photos below
                 </p>
+
+                {/* Support Message Section */}
+                {!showMessageForm ? (
+                  <motion.button
+                    onClick={() => setShowMessageForm(true)}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="mb-4 px-6 py-3 bg-gradient-to-r from-teal/10 to-cyan-500/10 border-2 border-teal/30 text-teal font-semibold rounded-2xl hover:border-teal/50 transition-all"
+                  >
+                    💝 Send a message to the photographer
+                  </motion.button>
+                ) : (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="mb-6 p-6 bg-gradient-to-r from-teal/5 to-cyan-500/5 border border-teal/20 rounded-2xl"
+                  >
+                    <label className="block text-sm font-semibold text-gray-700 mb-2 text-left">
+                      💌 Support with a message
+                    </label>
+                    <textarea
+                      value={buyerMessage}
+                      onChange={(e) => setBuyerMessage(e.target.value)}
+                      placeholder="Love your work! Keep creating amazing photos..."
+                      maxLength={500}
+                      rows={4}
+                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-teal focus:outline-none resize-none text-sm transition-colors mb-2"
+                    />
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-400">{buyerMessage.length}/500</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setShowMessageForm(false);
+                            setBuyerMessage('');
+                          }}
+                          className="px-4 py-2 text-gray-600 hover:text-gray-800 font-semibold text-sm transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <motion.button
+                          onClick={async () => {
+                            if (!buyerMessage.trim()) return;
+
+                            setSendingMessage(true);
+                            try {
+                              // Find the transaction for this photo code and user
+                              const { data: transaction, error: fetchError } = await supabase
+                                .from('transactions')
+                                .select('id')
+                                .eq('photo_code_id', codeData.id)
+                                .eq('buyer_id', user?.id || null)
+                                .single();
+
+                              if (fetchError) throw fetchError;
+
+                              // Update the transaction with the message
+                              const { error: updateError } = await supabase
+                                .from('transactions')
+                                .update({ buyer_message: buyerMessage.trim() })
+                                .eq('id', transaction.id);
+
+                              if (updateError) throw updateError;
+
+                              // Success - hide form and show confirmation
+                              setShowMessageForm(false);
+                              alert('Message sent! 💝');
+                            } catch (error) {
+                              console.error('Failed to send message:', error);
+                              alert('Failed to send message. Please try again.');
+                            } finally {
+                              setSendingMessage(false);
+                            }
+                          }}
+                          disabled={!buyerMessage.trim() || sendingMessage}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="px-6 py-2 bg-gradient-to-r from-teal to-cyan-500 text-white font-semibold rounded-xl disabled:opacity-50 text-sm"
+                        >
+                          {sendingMessage ? 'Sending...' : 'Send Message'}
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+
                 <motion.button
                   onClick={async () => {
                     // Download ALL photos (including samples)
@@ -1447,64 +1580,157 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-white rounded-3xl p-6 md:p-10 shadow-2xl"
+              className="bg-white rounded-3xl shadow-2xl overflow-hidden"
             >
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-8">
-                <div>
-                  <p className="text-sm font-semibold text-teal uppercase tracking-[0.3em]">
-                    Locked Gallery
-                  </p>
-                  <h2 className="text-3xl font-bold text-navy mt-2">
-                    {lockedCount} more moment{lockedCount === 1 ? '' : 's'} waiting
-                  </h2>
-                  <p className="text-gray-600 mt-2">
-                    Unlock the rest of your gallery to reveal crystal-clear versions, remove watermarks, and download them forever.
-                  </p>
+              {/* Header */}
+              <div className="gradient-multi p-8 text-white text-center">
+                <h2 className="text-4xl font-bold mb-2">
+                  Get Your Photos — High Quality
+                </h2>
+                <p className="text-white/90 text-lg">
+                  Instant Download • No Watermarks • Forever Yours
+                </p>
+              </div>
+
+              {/* Locked Photos Grid - MOVED TO TOP */}
+              <div className="p-8 md:p-12 pb-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {lockedPhotos.map((photo, index) => (
+                    <div
+                      key={photo.id || `locked-${index}`}
+                      className="relative rounded-2xl overflow-hidden shadow-lg group"
+                    >
+                      <img
+                        src={photo.display_url}
+                        alt={photo.title || `Locked photo ${index + 1}`}
+                        className="w-full h-48 object-cover grayscale"
+                      />
+                      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white gap-2 group-hover:bg-black/60 transition-colors">
+                        <span className="text-3xl">🔒</span>
+                        <p className="font-semibold text-sm">Full Resolution</p>
+                        <p className="text-xs opacity-0 group-hover:opacity-100 transition-opacity">Available Now</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex flex-col gap-3 w-full md:w-auto">
-                  <div className="bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4 text-left">
-                    <p className="font-semibold text-gray-800">What you get</p>
-                    <ul className="mt-2 text-sm text-gray-600 space-y-1">
-                      <li>• All photos in original resolution</li>
-                      <li>• No watermark, no limits</li>
-                      <li>• Direct support for the photographer</li>
-                    </ul>
+              </div>
+
+              {/* Payment Section - MOVED BELOW PHOTOS */}
+              <div className="px-8 md:px-12 pb-8 md:pb-12">
+                <div className="max-w-lg mx-auto">
+
+                  {/* Support Badge */}
+                  <div className="flex items-center justify-center gap-2 mb-6">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-teal/10 to-cyan-500/10 border border-teal/30 rounded-full">
+                      <span className="text-2xl">💝</span>
+                      <span className="font-bold text-teal">Support the photographer</span>
+                    </div>
                   </div>
-                  {MOCK_PAYMENT && (
-                    <p className="text-xs font-semibold text-yellow-700 text-center bg-yellow-100 rounded-full px-3 py-1">
-                      🎭 Test mode — payment simulated
-                    </p>
+
+                  {/* Amount Selection */}
+                  <div className="mb-4">
+                    <h3 className="text-2xl font-bold text-gray-800 text-center mb-6">Choose your amount</h3>
+
+                    {/* Tip Preset Buttons */}
+                    <div className="grid grid-cols-4 gap-3 mb-3">
+                      {[3, 5, 10, 15].map((amount) => (
+                        <motion.button
+                          key={amount}
+                          onClick={() => {
+                            setSelectedTipAmount(amount);
+                            setShowCustomInput(false);
+                            setCustomAmount('');
+                          }}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          className={`px-6 py-4 rounded-2xl font-bold text-xl transition-all ${
+                            selectedTipAmount === amount && !showCustomInput
+                              ? 'bg-gradient-to-r from-teal to-cyan-500 text-white shadow-lg'
+                              : 'bg-gray-50 text-gray-700 border-2 border-gray-200 hover:border-teal/50'
+                          }`}
+                        >
+                          ${amount}
+                        </motion.button>
+                      ))}
+                    </div>
+
+                    {/* Other Button */}
+                    <motion.button
+                      onClick={() => {
+                        setShowCustomInput(true);
+                        setCustomAmount('');
+                      }}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      className={`w-full px-4 py-3 rounded-2xl font-semibold text-base transition-all mb-4 ${
+                        showCustomInput
+                          ? 'bg-gradient-to-r from-teal to-cyan-500 text-white shadow-lg'
+                          : 'bg-gray-50 text-gray-600 border border-gray-300 hover:border-teal/50'
+                      }`}
+                    >
+                      Custom Amount
+                    </motion.button>
+
+                    {/* Custom Amount Input */}
+                    {showCustomInput && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mb-4"
+                      >
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-lg">$</span>
+                          <input
+                            type="number"
+                            min="3"
+                            step="0.01"
+                            value={customAmount}
+                            onChange={(e) => {
+                              const value = parseFloat(e.target.value);
+                              setCustomAmount(e.target.value);
+                              if (value >= 3) {
+                                setSelectedTipAmount(value);
+                              }
+                            }}
+                            placeholder="Enter amount (min. $3)"
+                            className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-teal focus:border-teal focus:outline-none text-lg font-bold transition-colors"
+                          />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">Minimum amount is $3.00</p>
+                      </motion.div>
+                    )}
+
+                  </div>
+
+                  {/* Admin Mode Indicator */}
+                  {isAdmin && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-2xl p-4 shadow-lg mb-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">👑</span>
+                        <div>
+                          <p className="font-bold text-sm">Admin Mode</p>
+                          <p className="text-xs text-white/90">Test payment - no charges</p>
+                        </div>
+                      </div>
+                    </motion.div>
                   )}
+
+                  {/* CTA - MINIMAL GAP FROM PRICE */}
                   <motion.button
                     onClick={handlePurchase}
                     disabled={purchasing}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    className="w-full px-8 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-2xl shadow-lg disabled:opacity-50"
+                    className="w-full px-8 py-5 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold text-xl rounded-2xl shadow-lg disabled:opacity-50"
                   >
-                    {purchasing ? 'Processing...' : `🔓 Unlock All Photos $${(parseFloat(codeData?.price) || 3.0).toFixed(2)}`}
+                    {purchasing ? 'Processing...' : `Unlock & Download — $${selectedTipAmount.toFixed(2)}`}
                   </motion.button>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                {lockedPhotos.map((photo, index) => (
-                  <div
-                    key={photo.id || `locked-${index}`}
-                    className="relative rounded-2xl overflow-hidden shadow-lg group"
-                  >
-                    <img
-                      src={photo.display_url}
-                      alt={photo.title || `Locked photo ${index + 1}`}
-                      className="w-full h-48 object-cover grayscale"
-                    />
-                    <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center text-white gap-2">
-                      <span className="text-3xl">🔒</span>
-                      <p className="font-semibold">Locked Preview</p>
-                      <p className="text-sm text-white/80">Purchase to reveal</p>
-                    </div>
-                  </div>
-                ))}
               </div>
             </motion.div>
           ) : (
@@ -1533,7 +1759,7 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
           onClose={() => setShowPaymentModal(false)}
           onSuccess={handlePaymentSuccess}
           clientSecret={clientSecret}
-          amount={parseFloat(codeData?.price) || 3.0}
+          amount={selectedTipAmount}
         />
 
         {/* Image Lightbox Modal */}

@@ -2,9 +2,10 @@
 -- This fixes the issue where total_earnings in photographer_profiles was not being updated
 
 -- =====================================================
--- 1. Drop existing function if it exists (create new version)
+-- 1. Drop existing trigger and function (cascade)
 -- =====================================================
-DROP FUNCTION IF EXISTS auto_update_photographer_earnings();
+DROP TRIGGER IF EXISTS trigger_auto_update_photographer_earnings ON public.transactions;
+DROP FUNCTION IF EXISTS auto_update_photographer_earnings() CASCADE;
 
 -- =====================================================
 -- 2. Create function to update photographer earnings

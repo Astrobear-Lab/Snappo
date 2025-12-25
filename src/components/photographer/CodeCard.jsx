@@ -106,7 +106,7 @@ const CodeCard = ({ code, onDetailClick }) => {
       </AnimatePresence>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3 mb-4 py-3 border-t border-b border-gray-100">
+      <div className="grid grid-cols-3 gap-3 mb-4 py-3 border-t border-b border-gray-100">
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Photos</div>
           <div className="font-bold text-gray-800">{code.photos.length}</div>
@@ -118,12 +118,6 @@ const CodeCard = ({ code, onDetailClick }) => {
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Unlocks</div>
           <div className="font-bold text-teal">{code.unlocks}</div>
-        </div>
-        <div className="text-center">
-          <div className="text-xs text-gray-500 mb-1">Price</div>
-          <div className="font-bold text-teal">
-            ${(code.price || 3.0).toFixed(2)}
-          </div>
         </div>
       </div>
 
@@ -168,14 +162,27 @@ const CodeCard = ({ code, onDetailClick }) => {
       </div>
 
       {/* Actions */}
-      <motion.button
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={() => onDetailClick(code)}
-        className="w-full py-2.5 px-4 bg-teal hover:bg-teal/90 text-white font-semibold rounded-lg text-sm transition-colors"
-      >
-        View Details →
-      </motion.button>
+      <div className="flex gap-2">
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => onDetailClick(code)}
+          className="flex-1 py-2.5 px-4 bg-teal hover:bg-teal/90 text-white font-semibold rounded-lg text-sm transition-colors"
+        >
+          View Details →
+        </motion.button>
+        <motion.a
+          href={`/photo/${code.code}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          className="py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg text-sm transition-colors flex items-center justify-center"
+          title="Open photo link in new tab"
+        >
+          🔗
+        </motion.a>
+      </div>
     </motion.div>
   );
 };

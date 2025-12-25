@@ -27,6 +27,7 @@ const TimelineMatchPanel = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [photoAssignments, setPhotoAssignments] = useState({}); // { photoId: { codeId, isAuto, matchedAt } }
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, currentFile: '' });
   const [samplePhotos, setSamplePhotos] = useState({}); // { photoId: boolean }
   const [autoDismissedPhotos, setAutoDismissedPhotos] = useState({});
   const [detailPhoto, setDetailPhoto] = useState(null);
@@ -288,6 +289,9 @@ const TimelineMatchPanel = () => {
 
     setUploading(true);
     const uploadedPhotoIds = []; // Track successfully uploaded photo IDs
+    const totalPhotos = Object.keys(photoAssignments).length;
+    let currentPhotoIndex = 0;
+
     try {
       // Get photographer profile
       const { data: profile, error: profileError } = await supabase
@@ -307,6 +311,13 @@ const TimelineMatchPanel = () => {
 
         const upload = uploads.find(u => u.id === photoId);
         if (!upload) continue;
+
+        currentPhotoIndex++;
+        setUploadProgress({
+          current: currentPhotoIndex,
+          total: totalPhotos,
+          currentFile: upload.file.name
+        });
 
         const fileExt = upload.file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -422,6 +433,7 @@ const TimelineMatchPanel = () => {
       });
     } finally {
       setUploading(false);
+      setUploadProgress({ current: 0, total: 0, currentFile: '' });
     }
   };
 
@@ -540,17 +552,35 @@ const TimelineMatchPanel = () => {
               <h3 className="text-lg font-bold text-gray-800">
                 Timeline ({matchedCount} matched)
               </h3>
-              {matchedCount > 0 && (
-                <motion.button
-                  onClick={handleUploadAll}
-                  disabled={uploading}
-                  whileHover={{ scale: uploading ? 1 : 1.05 }}
-                  whileTap={{ scale: uploading ? 1 : 0.95 }}
-                  className="px-6 py-2 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-xl shadow-lg disabled:opacity-50"
-                >
-                  {uploading ? 'Uploading...' : `Upload All (${matchedCount})`}
-                </motion.button>
-              )}
+              <div className="flex flex-col items-end gap-2">
+                {matchedCount > 0 && (
+                  <motion.button
+                    onClick={handleUploadAll}
+                    disabled={uploading}
+                    whileHover={{ scale: uploading ? 1 : 1.05 }}
+                    whileTap={{ scale: uploading ? 1 : 0.95 }}
+                    className="px-6 py-2 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-xl shadow-lg disabled:opacity-50"
+                  >
+                    {uploading ? 'Uploading...' : `Upload All (${matchedCount})`}
+                  </motion.button>
+                )}
+                {uploading && uploadProgress.total > 0 && (
+                  <div className="w-64">
+                    <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                      <span className="truncate max-w-[180px]">{uploadProgress.currentFile}</span>
+                      <span className="font-semibold">{uploadProgress.current}/{uploadProgress.total}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                      <motion.div
+                        className="h-full bg-gradient-to-r from-teal to-cyan-500"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                        transition={{ duration: 0.3 }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Timeline Items - Will be implemented in next step with drag & drop */}
@@ -625,6 +655,15 @@ const TimelineMatchPanel = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Notification Modal */}
+      <NotificationModal
+        isOpen={notification.isOpen}
+        onClose={() => setNotification({ ...notification, isOpen: false })}
+        type={notification.type}
+        title={notification.title}
+        message={notification.message}
+      />
     </DndContext>
   );
 };
@@ -858,15 +897,6 @@ const TimelineItem = ({
           </div>
         )}
       </div>
-
-      {/* Notification Modal */}
-      <NotificationModal
-        isOpen={notification.isOpen}
-        onClose={() => setNotification({ ...notification, isOpen: false })}
-        type={notification.type}
-        title={notification.title}
-        message={notification.message}
-      />
     </div>
   );
 };

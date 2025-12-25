@@ -19,7 +19,6 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
   const [editedNote, setEditedNote] = useState(code?.note || '');
   const [editedTags, setEditedTags] = useState(code?.tags?.join(', ') || '');
-  const [editedPrice, setEditedPrice] = useState(code?.price || '3.00');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -37,7 +36,6 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
       setPhotos(code?.photos || []);
       setEditedNote(code?.note || '');
       setEditedTags(code?.tags?.join(', ') || '');
-      setEditedPrice(code?.price || '3.00');
       setIsEditingMetadata(false);
     }
   }, [code]);
@@ -148,18 +146,6 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
 
   const shareUrl = `${window.location.origin}/photo/${localCode?.code || ''}`;
 
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: 'Photo Code',
-        text: `Check out my photos! Use code: ${localCode?.code || ''}`,
-        url: shareUrl,
-      });
-    } else {
-      navigator.clipboard.writeText(shareUrl);
-    }
-  };
-
   const handleDeleteCode = async () => {
     if (!localCode?.id) return;
 
@@ -185,14 +171,11 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const priceValue = parseFloat(editedPrice) || 3.0;
-
       const { error } = await supabase
         .from('photo_codes')
         .update({
           note: editedNote.trim() || null,
           tags: tags.length > 0 ? tags : null,
-          price: priceValue,
         })
         .eq('id', localCode.id);
 
@@ -203,7 +186,6 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
         ...localCode,
         note: editedNote.trim() || '',
         tags: tags,
-        price: priceValue,
       });
 
       await fetchCodes();
@@ -217,7 +199,6 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const handleCancelEdit = () => {
     setEditedNote(localCode?.note || '');
     setEditedTags(localCode?.tags?.join(', ') || '');
-    setEditedPrice(localCode?.price || '3.00');
     setIsEditingMetadata(false);
   };
 
@@ -398,19 +379,12 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   {/* Metadata Display/Edit */}
                   {!isEditingMetadata ? (
                     <div className="space-y-1.5">
-                      {/* Price Display - Very Compact */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-green-600">
-                          ${parseFloat(localCode?.price || 3.0).toFixed(2)}
-                        </span>
-                        {localCode?.note && (
-                          <>
-                            <span className="text-gray-300">·</span>
-                            <p className="text-xs text-gray-600">{localCode.note}</p>
-                          </>
-                        )}
-                      </div>
+                      {/* Note Display */}
+                      {localCode?.note && (
+                        <p className="text-sm text-gray-600">{localCode.note}</p>
+                      )}
 
+                      {/* Tags Display */}
                       {localCode?.tags && localCode.tags.length > 0 && (
                         <div className="flex flex-wrap gap-1">
                           {localCode.tags.map((tag, idx) => (
@@ -424,7 +398,7 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                         </div>
                       )}
 
-                      {/* Edit Button - Icon only */}
+                      {/* Edit Button */}
                       <motion.button
                         onClick={() => setIsEditingMetadata(true)}
                         whileHover={{ scale: 1.05 }}
@@ -438,22 +412,6 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                     </div>
                   ) : (
                     <div className="space-y-3 mt-3">
-                      {/* Price Edit */}
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">
-                          Price ($)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={editedPrice}
-                          onChange={(e) => setEditedPrice(e.target.value)}
-                          placeholder="3.00"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:border-teal focus:ring-2 focus:ring-teal/20 outline-none transition-all text-sm"
-                        />
-                      </div>
-
                       {/* Note Edit */}
                       <div>
                         <label className="block text-xs font-semibold text-gray-600 mb-1">
@@ -568,15 +526,17 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                         readOnly
                         className="flex-1 px-2 py-1.5 bg-gray-50 rounded text-xs text-gray-700"
                       />
-                      <motion.button
-                        onClick={handleShare}
+                      <motion.a
+                        href={shareUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="px-3 py-1.5 bg-teal text-white font-semibold rounded text-xs hover:bg-teal/90 transition-colors"
-                        title="Share"
+                        className="px-3 py-1.5 bg-teal text-white font-semibold rounded text-xs hover:bg-teal/90 transition-colors flex items-center"
+                        title="Visit photo page"
                       >
-                        📤 Share
-                      </motion.button>
+                        🔗 Visit
+                      </motion.a>
                     </div>
                   </div>
                 </div>

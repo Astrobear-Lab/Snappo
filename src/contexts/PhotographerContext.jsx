@@ -237,6 +237,10 @@ export const PhotographerProvider = ({ children }) => {
           is_purchased,
           purchased_at,
           purchased_by,
+          customer_email,
+          email_collected_at,
+          email_sent,
+          email_sent_at,
           uploaded_at,
           published_at,
           shared_at,
@@ -325,6 +329,10 @@ export const PhotographerProvider = ({ children }) => {
           expiresAt: new Date(code.expires_at),
           tags: code.tags || [],
           note: code.note || '',
+          customer_email: code.customer_email || null,
+          email_collected_at: code.email_collected_at || null,
+          email_sent: code.email_sent || false,
+          email_sent_at: code.email_sent_at || null,
           photos: await Promise.all(
             photos.map(async (photo) => {
               const originalUrl = await buildSignedUrl('photos-original', photo.file_url);

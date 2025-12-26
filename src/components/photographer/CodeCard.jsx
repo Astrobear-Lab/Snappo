@@ -121,6 +121,32 @@ const CodeCard = ({ code, onDetailClick }) => {
         </div>
       </div>
 
+      {/* Customer Email */}
+      <div className={`mb-4 p-3 rounded-lg ${code.customer_email ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 border border-gray-200'}`}>
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📧</span>
+          <div className="flex-1 min-w-0">
+            <div className={`text-xs font-semibold mb-1 ${code.customer_email ? 'text-blue-600' : 'text-gray-500'}`}>
+              Customer Email
+            </div>
+            {code.customer_email ? (
+              <div className="text-sm text-gray-800 font-medium truncate" title={code.customer_email}>
+                {code.customer_email}
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 italic">
+                Not collected yet
+              </div>
+            )}
+          </div>
+          {code.email_sent && (
+            <span className="flex-shrink-0 text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-semibold border border-green-300">
+              ✓ Sent
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Photo Thumbnails */}
       {code.photos.length > 0 && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-2">

@@ -108,29 +108,30 @@ const PhotographerDashboardMain = () => {
 
       {/* Top Navigation Bar */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Logo */}
-            <div className="flex items-center gap-3">
-              <div className="text-3xl">📸</div>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="text-2xl sm:text-3xl">📸</div>
               <div>
-                <h1 className="text-xl font-bold text-gray-800">Snappo</h1>
-                <p className="text-xs text-gray-500">Photographer Dashboard</p>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-800">Snappo</h1>
+                <p className="text-xs text-gray-500 hidden sm:block">Photographer Dashboard</p>
               </div>
             </div>
 
             {/* Quick Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <motion.button
                 onClick={() => setShowGenerateModal(true)}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="px-6 py-2 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-shadow"
+                className="px-3 sm:px-6 py-2 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-shadow text-sm sm:text-base"
               >
-                ✨ Generate Code
+                <span className="hidden sm:inline">✨ Generate Code</span>
+                <span className="sm:hidden">✨ New</span>
               </motion.button>
 
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal to-cyan-500 flex items-center justify-center text-white font-bold overflow-hidden">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-teal to-cyan-500 flex items-center justify-center text-white font-bold overflow-hidden">
                 {userProfile?.avatar_url ? (
                   <img
                     src={userProfile.avatar_url}
@@ -147,10 +148,10 @@ const PhotographerDashboardMain = () => {
       </div>
 
       {/* Main Layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-3 sm:py-6 pb-20 lg:pb-6">
         <div className="flex gap-6">
-          {/* Sidebar Navigation */}
-          <div className="w-64 flex-shrink-0">
+          {/* Sidebar Navigation - Desktop Only */}
+          <div className="hidden lg:block w-64 flex-shrink-0">
             <div className="bg-white rounded-2xl shadow-md p-4 sticky top-24">
               <nav className="space-y-2">
                 {navigationItems.map((item) => {
@@ -202,7 +203,7 @@ const PhotographerDashboardMain = () => {
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 space-y-6">
+          <div className="flex-1 space-y-4 sm:space-y-6 w-full">
             {/* Dashboard View */}
             {activeView === 'dashboard' && (
               <motion.div
@@ -211,48 +212,48 @@ const PhotographerDashboardMain = () => {
                 className="space-y-6"
               >
                 {/* Hero Section */}
-                <div className="bg-gradient-to-r from-teal to-cyan-500 rounded-3xl shadow-lg p-8 text-white">
-                  <h2 className="text-3xl font-bold mb-2">
+                <div className="bg-gradient-to-r from-teal to-cyan-500 rounded-2xl sm:rounded-3xl shadow-lg p-5 sm:p-8 text-white">
+                  <h2 className="text-xl sm:text-3xl font-bold mb-2">
                     {getGreeting()}, Photographer!
                   </h2>
-                  <p className="text-white/90 text-lg mb-6">
+                  <p className="text-white/90 text-sm sm:text-lg mb-4 sm:mb-6">
                     You created {stats.totalCodes} code
                     {stats.totalCodes !== 1 ? 's' : ''} with{' '}
                     {stats.totalPhotos} photo{stats.totalPhotos !== 1 ? 's' : ''}{' '}
                     🌟
                   </p>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                      <div className="text-3xl font-bold">
+                  <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4">
+                      <div className="text-xl sm:text-3xl font-bold">
                         {stats.pendingUpload}
                       </div>
-                      <div className="text-sm text-white/80">Pending Upload</div>
+                      <div className="text-xs sm:text-sm text-white/80">Pending Upload</div>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                      <div className="text-3xl font-bold">{stats.published}</div>
-                      <div className="text-sm text-white/80">Published</div>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4">
+                      <div className="text-xl sm:text-3xl font-bold">{stats.published}</div>
+                      <div className="text-xs sm:text-sm text-white/80">Published</div>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-                      <div className="text-3xl font-bold">{stats.unlocked}</div>
-                      <div className="text-sm text-white/80">Unlocked</div>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4">
+                      <div className="text-xl sm:text-3xl font-bold">{stats.unlocked}</div>
+                      <div className="text-xs sm:text-sm text-white/80">Unlocked</div>
                     </div>
                   </div>
                 </div>
 
                 {/* Quick Actions */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <motion.button
                     onClick={() => setShowGenerateModal(true)}
                     whileHover={{ scale: 1.02, y: -4 }}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-shadow p-6 text-left"
+                    className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-shadow p-5 sm:p-6 text-left"
                   >
-                    <div className="text-4xl mb-3">✨</div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-1">
+                    <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">✨</div>
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-1">
                       Generate Code
                     </h3>
-                    <p className="text-gray-600 text-sm">
+                    <p className="text-gray-600 text-xs sm:text-sm">
                       Create a new code for your photoshoot
                     </p>
                   </motion.button>
@@ -261,17 +262,17 @@ const PhotographerDashboardMain = () => {
                     onClick={() => setActiveView('upload')}
                     whileHover={{ scale: 1.02, y: -4 }}
                     whileTap={{ scale: 0.98 }}
-                    className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-shadow p-6 text-left relative"
+                    className="bg-white rounded-2xl shadow-md hover:shadow-xl transition-shadow p-5 sm:p-6 text-left relative"
                   >
-                    <div className="text-4xl mb-3">📸</div>
-                    <h3 className="text-xl font-bold text-gray-800 mb-1">
+                    <div className="text-3xl sm:text-4xl mb-2 sm:mb-3">📸</div>
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-1">
                       Upload & Match
                     </h3>
-                    <p className="text-gray-600 text-sm">
+                    <p className="text-gray-600 text-xs sm:text-sm">
                       Upload photos and match them to codes
                     </p>
                     {stats.unmatchedUploads > 0 && (
-                      <div className="absolute top-4 right-4 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-sm font-bold">
+                      <div className="absolute top-3 right-3 sm:top-4 sm:right-4 w-7 h-7 sm:w-8 sm:h-8 bg-red-500 text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-bold">
                         {stats.unmatchedUploads}
                       </div>
                     )}
@@ -382,6 +383,29 @@ const PhotographerDashboardMain = () => {
         isOpen={showProfileSettings}
         onClose={handleProfileSettingsClose}
       />
+
+      {/* Bottom Tab Bar - Mobile Only */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40">
+        <nav className="flex justify-around items-center h-16">
+          {navigationItems.map((item) => {
+            const isActive = activeView === item.id;
+
+            return (
+              <motion.button
+                key={item.id}
+                onClick={() => setActiveView(item.id)}
+                whileTap={{ scale: 0.9 }}
+                className={`flex flex-col items-center justify-center flex-1 h-full ${
+                  isActive ? 'text-teal' : 'text-gray-600'
+                }`}
+              >
+                <span className="text-2xl mb-0.5">{item.icon}</span>
+                <span className="text-xs font-semibold">{item.label}</span>
+              </motion.button>
+            );
+          })}
+        </nav>
+      </div>
     </div>
   );
 };

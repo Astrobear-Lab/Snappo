@@ -521,6 +521,39 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                   <div className="text-xs text-teal">Unlocks</div>
                 </div>
               </div>
+
+              {/* Customer Email */}
+              <div className={`mt-3 p-3 rounded-lg ${localCode?.customer_email ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 border border-gray-200'}`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📧</span>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-xs font-semibold mb-1 ${localCode?.customer_email ? 'text-blue-600' : 'text-gray-500'}`}>
+                      Customer Email
+                    </div>
+                    {localCode?.customer_email ? (
+                      <>
+                        <div className="text-sm text-gray-800 font-medium truncate" title={localCode.customer_email}>
+                          {localCode.customer_email}
+                        </div>
+                        {localCode.email_collected_at && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            Collected {formatTimeAgo(new Date(localCode.email_collected_at))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-sm text-gray-500 italic">
+                        Not collected yet
+                      </div>
+                    )}
+                  </div>
+                  {localCode?.email_sent && (
+                    <span className="flex-shrink-0 text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-semibold border border-green-300">
+                      ✓ Sent
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Content */}

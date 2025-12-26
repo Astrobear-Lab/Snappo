@@ -165,6 +165,18 @@ CREATE TABLE IF NOT EXISTS public.photo_codes (
   note TEXT,
   tags TEXT[],
 
+  -- Customer contact info (collected on-site)
+  customer_phone TEXT,
+  phone_collected_at TIMESTAMP WITH TIME ZONE,
+  sms_sent BOOLEAN DEFAULT FALSE,
+  sms_sent_at TIMESTAMP WITH TIME ZONE,
+
+  -- Email notification (new system)
+  customer_email TEXT,
+  email_collected_at TIMESTAMP WITH TIME ZONE,
+  email_sent BOOLEAN DEFAULT FALSE,
+  email_sent_at TIMESTAMP WITH TIME ZONE,
+
   -- Redemption
   is_redeemed BOOLEAN DEFAULT FALSE,
   redeemed_by UUID REFERENCES public.profiles(id),
@@ -204,6 +216,7 @@ ALTER TABLE public.code_photos ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Anyone can view unredeemed codes" ON public.photo_codes;
 DROP POLICY IF EXISTS "Code owner can view redeemed code" ON public.photo_codes;
 DROP POLICY IF EXISTS "Photographers can create codes" ON public.photo_codes;
+DROP POLICY IF EXISTS "Anyone can update phone number" ON public.photo_codes;
 
 -- Policies for photo_codes
 CREATE POLICY "Anyone can view unredeemed codes"
@@ -224,6 +237,12 @@ CREATE POLICY "Photographers can create codes"
       AND status IN ('pending', 'active')
     )
   );
+
+-- Allow anyone to update contact info (phone/email) on unredeemed codes
+CREATE POLICY "Anyone can update phone number"
+  ON public.photo_codes FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
 
 -- Drop existing policies for code_photos
 DROP POLICY IF EXISTS "Anyone can view photos from unredeemed codes" ON public.code_photos;

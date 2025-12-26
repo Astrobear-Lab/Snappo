@@ -180,6 +180,12 @@ const PhotoView = () => {
   const [modalPhotoIndex, setModalPhotoIndex] = useState(0);
   const [photographerStats, setPhotographerStats] = useState(null);
 
+  // Email collection states
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailError, setEmailError] = useState('');
+
+
   // Stripe payment states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [clientSecret, setClientSecret] = useState('');
@@ -280,6 +286,43 @@ const PhotoView = () => {
       fetchPhotoByCode();
     }
   }, [code]);
+
+
+  const handleSaveEmail = async () => {
+    setEmailError('');
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!customerEmail || !emailRegex.test(customerEmail)) {
+      setEmailError('Please enter a valid email address');
+      return;
+    }
+
+    setSavingEmail(true);
+
+    try {
+      // Call Edge Function to save email address (bypasses RLS)
+      const { data, error } = await supabase.functions.invoke('save-customer-email', {
+        body: {
+          codeId: codeData.id,
+          email: customerEmail,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Update local state
+      setCodeData({ ...codeData, customer_email: customerEmail });
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+    } catch (err) {
+      console.error('Failed to save email:', err);
+      setEmailError(err.message || 'Failed to save email address. Please try again.');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
 
   const fetchPhotoByCode = async () => {
     setLoading(true);
@@ -1080,6 +1123,99 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
                 </motion.div>
               )}
             </div>
+
+            {/* Email Collection Section */}
+            {!codeData?.customer_email ? (
+              <div className="mb-8">
+                <div className="text-center mb-6">
+                  <div className="text-6xl mb-4">📧</div>
+                  <h2 className="text-2xl font-bold text-navy mb-2">
+                    Get Notified When Photos Are Ready
+                  </h2>
+                  <p className="text-gray-600">
+                    Enter your email to receive instant notification when your photographer uploads your photos
+                  </p>
+                </div>
+
+                {/* Email Input */}
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="your.email@example.com"
+                    className={`w-full px-4 py-4 rounded-xl border-2 text-lg transition-colors ${
+                      emailError
+                        ? 'border-red-500 focus:border-red-500'
+                        : 'border-gray-200 focus:border-teal'
+                    } focus:outline-none`}
+                    autoFocus
+                  />
+                  {emailError && (
+                    <p className="text-red-500 text-sm mt-2">{emailError}</p>
+                  )}
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-teal/5 border border-teal/20 rounded-2xl p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">✨</div>
+                    <div className="text-sm text-gray-700">
+                      <p className="font-semibold mb-1">Why we need this:</p>
+                      <ul className="space-y-1 text-gray-600">
+                        <li>• Instant email when photos are uploaded</li>
+                        <li>• Direct link to view and download</li>
+                        <li>• No spam, just your photos</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Temporary Testing Notice */}
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <div className="text-2xl">⚠️</div>
+                    <div className="text-sm text-gray-700">
+                      <p className="font-semibold mb-1">Testing Mode:</p>
+                      <p className="text-gray-600">
+                        Email notifications are currently in testing. For now, please use{' '}
+                        <span className="font-mono bg-amber-100 px-2 py-0.5 rounded">joon0zo1022@gmail.com</span>{' '}
+                        to receive test emails.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <motion.button
+                  onClick={handleSaveEmail}
+                  disabled={savingEmail}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full px-6 py-4 bg-gradient-to-r from-teal to-cyan-500 text-white font-bold text-lg rounded-xl shadow-lg disabled:opacity-50 mb-3"
+                >
+                  {savingEmail ? 'Saving...' : '📧 Notify Me When Ready'}
+                </motion.button>
+
+                <p className="text-xs text-gray-400 text-center">
+                  Your email is only used for photo notifications and won't be shared
+                </p>
+
+                <div className="border-t border-gray-200 my-6"></div>
+              </div>
+            ) : (
+              <div className="mb-8 text-center">
+                <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 border border-green-200 rounded-full">
+                  <span className="text-xl">✓</span>
+                  <span className="font-semibold text-green-800">
+                    We'll email you at {codeData.customer_email}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Photographer Working Animation */}
             <div className="text-center mb-8">

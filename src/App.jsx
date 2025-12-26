@@ -10,6 +10,7 @@ import CTA from './components/CTA';
 import Footer from './components/Footer';
 import PhotographerDashboard from './components/PhotographerDashboard';
 import PhotoView from './pages/PhotoView';
+import TestEmail from './pages/TestEmail';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Home Page Component
@@ -56,6 +57,7 @@ function App() {
                 }
               />
               <Route path="/photo/:code" element={<PhotoView />} />
+              <Route path="/test-email" element={<TestEmail />} />
             </Routes>
           </Layout>
         </PhotographerProvider>

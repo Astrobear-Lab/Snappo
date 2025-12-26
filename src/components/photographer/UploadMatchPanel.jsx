@@ -208,6 +208,32 @@ const UploadMatchPanel = ({ preselectedCode = null }) => {
       const uploadResults = await Promise.all(uploadPromises);
       console.log('[UploadMatchPanel] Upload results:', uploadResults);
 
+      // Send email notification if customer email exists
+      console.log('[UploadMatchPanel] Checking for customer email to send notification...');
+      try {
+        const { data: emailResult, error: emailError } = await supabase.functions.invoke(
+          'send-email-notification',
+          {
+            body: {
+              codeId: selectedCode,
+              photoCount: uploadResults.filter(r => r).length,
+            },
+          }
+        );
+
+        if (emailError) {
+          console.error('[UploadMatchPanel] Email notification failed:', emailError);
+          // Don't throw - Email failure shouldn't block the upload
+        } else if (emailResult?.success) {
+          console.log('[UploadMatchPanel] Email notification sent successfully to:', emailResult.email);
+        } else {
+          console.log('[UploadMatchPanel] Email not sent:', emailResult?.message || 'No email collected');
+        }
+      } catch (emailErr) {
+        console.error('[UploadMatchPanel] Email notification error:', emailErr);
+        // Continue - Email is not critical
+      }
+
       // Refresh codes data
       console.log('[UploadMatchPanel] Refreshing codes data...');
       await fetchCodes();

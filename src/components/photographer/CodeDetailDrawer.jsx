@@ -317,6 +317,32 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
           console.log('[CodeDetailDrawer] Successfully set uploaded_at:', now);
           console.log('[CodeDetailDrawer] DB returned:', updateData);
         }
+
+        // Send email notification if customer email exists
+        console.log('[CodeDetailDrawer] Checking for customer email to send notification...');
+        try {
+          const { data: emailResult, error: emailError } = await supabase.functions.invoke(
+            'send-email-notification',
+            {
+              body: {
+                codeId: localCode.id,
+                photoCount: files.length,
+              },
+            }
+          );
+
+          if (emailError) {
+            console.error('[CodeDetailDrawer] Email notification failed:', emailError);
+            // Don't throw - Email failure shouldn't block the upload
+          } else if (emailResult?.success) {
+            console.log('[CodeDetailDrawer] Email notification sent successfully to:', emailResult.email);
+          } else {
+            console.log('[CodeDetailDrawer] Email not sent:', emailResult?.message || 'No email collected');
+          }
+        } catch (emailErr) {
+          console.error('[CodeDetailDrawer] Email notification error:', emailErr);
+          // Continue - Email is not critical
+        }
       }
 
       // Refresh codes

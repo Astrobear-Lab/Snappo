@@ -33,6 +33,10 @@ VITE_STRIPE_PUBLISHABLE_KEY=pk_test_51...your-key
 
 **Supabase Secrets** (for Edge Functions): Add via Supabase CLI or Dashboard → Settings → Edge Functions:
 - `STRIPE_SECRET_KEY=sk_test_51...your-secret-key`
+- `TWILIO_ACCOUNT_SID=AC...` (for SMS notifications)
+- `TWILIO_AUTH_TOKEN=...` (for SMS notifications)
+- `TWILIO_PHONE_NUMBER=+1234567890` (for SMS notifications)
+- `APP_URL=https://your-app.vercel.app` (for SMS links)
 
 **OAuth Setup**: For Google sign-in, configure redirect URLs in:
 - **Supabase**: Authentication → URL Configuration → Add production URL
@@ -75,6 +79,10 @@ Both contexts wrap the entire app and work independently.
 3. **photos** - Photo metadata, EXIF data, storage paths
 4. **photo_codes** - 6-digit codes linking to photos
    - `code` - Unique 6-char code (e.g., "ABC123")
+   - `customer_email` - Email address for notifications (active)
+   - `email_collected_at` - When email was collected
+   - `email_sent` - Whether email notification was sent
+   - `customer_phone` - Phone number (deprecated, kept for backward compatibility)
    - `is_purchased` - Payment status
    - `purchased_by` - User who bought the photo
 5. **transactions** - Payment records
@@ -84,14 +92,26 @@ Both contexts wrap the entire app and work independently.
 - `photos` - **Public** bucket for watermarked images
 - `photos-original` - **Private** bucket for full-quality originals (RLS-protected, only accessible after purchase)
 
-### 6-Digit Code System
+### 6-Digit Code System with Email Notifications
 
-The core workflow revolves around unique 6-digit codes:
+The core workflow revolves around unique 6-digit codes with on-site email collection:
 
-1. Photographer uploads photo → auto-generates code (e.g., "ABC123")
-2. User receives code on paper/verbally
-3. User enters code on homepage → redirects to `/photo/:code`
-4. User sees watermarked preview (free) or purchases original ($3)
+1. **On-site**: Photographer generates QR code → Customer scans QR → Customer enters email address
+2. **Later**: Photographer uploads photos → System sends email to customer with link
+3. **Customer**: Receives email → Clicks link → Views photos → Purchases if desired
+
+**Email Collection Flow** ([src/pages/PhotoView.jsx](src/pages/PhotoView.jsx)):
+- When customer visits QR code link, modal prompts for email address
+- Email saved to `photo_codes.customer_email`
+- Modal can be skipped (email is optional)
+
+**Email Notification Flow** ([supabase/functions/send-email-notification](supabase/functions/send-email-notification/index.ts)):
+- Triggered automatically when photos are uploaded
+- Only sends if `customer_email` exists and `email_sent` is false
+- Uses Supabase's built-in SMTP or configured email service
+- Message includes direct link to photo page with beautiful HTML template
+
+**Note**: Phone/SMS functionality is deprecated but still present in database schema for backward compatibility
 
 Code generation in [src/contexts/PhotographerContext.jsx](src/contexts/PhotographerContext.jsx):
 - Uses charset: `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no ambiguous chars)

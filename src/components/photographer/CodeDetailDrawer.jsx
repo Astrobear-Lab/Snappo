@@ -12,10 +12,11 @@ import exifr from 'exifr';
 
 const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
   const { user } = useAuth();
-  const { extendCode, invalidateCode, fetchCodes, deleteCode } = usePhotographer();
+  const { extendCode, invalidateCode, fetchCodes, deleteCode, deletePhoto } = usePhotographer();
   const [localCode, setLocalCode] = useState(code);
   const [photos, setPhotos] = useState(code?.photos || []);
   const [loadingPhotoId, setLoadingPhotoId] = useState(null);
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
   const [isEditingMetadata, setIsEditingMetadata] = useState(false);
   const [editedNote, setEditedNote] = useState(code?.note || '');
   const [editedTags, setEditedTags] = useState(code?.tags?.join(', ') || '');
@@ -83,6 +84,24 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
       alert('Failed to update sample status. Please try again.');
     } finally {
       setLoadingPhotoId(null);
+    }
+  };
+
+  // Delete photo handler
+  const handleDeletePhoto = async (photoId) => {
+    if (!window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
+      return;
+    }
+
+    setDeletingPhotoId(photoId);
+    try {
+      const success = await deletePhoto(photoId, localCode?.id);
+      if (success) {
+        // Update local photos state
+        setPhotos(prev => prev.filter(p => p.id !== photoId));
+      }
+    } finally {
+      setDeletingPhotoId(null);
     }
   };
 
@@ -712,26 +731,52 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                                   ✨ Sample
                                 </div>
 
-                                {/* Remove sample button */}
-                                <motion.button
-                                  onClick={() => togglePhotoSample(photo.id, photo.isSample)}
-                                  disabled={loadingPhotoId === photo.id}
-                                  whileHover={{ scale: loadingPhotoId === photo.id ? 1 : 1.05 }}
-                                  whileTap={{ scale: loadingPhotoId === photo.id ? 1 : 0.95 }}
-                                  className="absolute top-2 right-2 px-2 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 bg-white/90 text-gray-700 hover:bg-white opacity-0 group-hover:opacity-100"
-                                >
-                                  {loadingPhotoId === photo.id ? (
-                                    <>
-                                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                      </svg>
-                                      <span>...</span>
-                                    </>
-                                  ) : (
-                                    <span>Remove</span>
-                                  )}
-                                </motion.button>
+                                {/* Action buttons */}
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100">
+                                  {/* Remove sample button */}
+                                  <motion.button
+                                    onClick={() => togglePhotoSample(photo.id, photo.isSample)}
+                                    disabled={loadingPhotoId === photo.id || deletingPhotoId === photo.id}
+                                    whileHover={{ scale: (loadingPhotoId === photo.id || deletingPhotoId === photo.id) ? 1 : 1.05 }}
+                                    whileTap={{ scale: (loadingPhotoId === photo.id || deletingPhotoId === photo.id) ? 1 : 0.95 }}
+                                    className="px-2 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 bg-white/90 text-gray-700 hover:bg-white"
+                                    title="Remove sample status"
+                                  >
+                                    {loadingPhotoId === photo.id ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        <span>...</span>
+                                      </>
+                                    ) : (
+                                      <span>Remove</span>
+                                    )}
+                                  </motion.button>
+
+                                  {/* Delete photo button */}
+                                  <motion.button
+                                    onClick={() => handleDeletePhoto(photo.id)}
+                                    disabled={deletingPhotoId === photo.id || loadingPhotoId === photo.id}
+                                    whileHover={{ scale: (deletingPhotoId === photo.id || loadingPhotoId === photo.id) ? 1 : 1.05 }}
+                                    whileTap={{ scale: (deletingPhotoId === photo.id || loadingPhotoId === photo.id) ? 1 : 0.95 }}
+                                    className="px-2 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 bg-red-500/90 text-white hover:bg-red-500"
+                                    title="Delete photo"
+                                  >
+                                    {deletingPhotoId === photo.id ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        <span>...</span>
+                                      </>
+                                    ) : (
+                                      <span>🗑</span>
+                                    )}
+                                  </motion.button>
+                                </div>
                               </div>
 
                               {/* Photo Metadata Accordion */}
@@ -766,26 +811,52 @@ const CodeDetailDrawer = ({ code, isOpen, onClose }) => {
                                   </span>
                                 </div>
 
-                                {/* Mark as sample button */}
-                                <motion.button
-                                  onClick={() => togglePhotoSample(photo.id, photo.isSample)}
-                                  disabled={loadingPhotoId === photo.id}
-                                  whileHover={{ scale: loadingPhotoId === photo.id ? 1 : 1.05 }}
-                                  whileTap={{ scale: loadingPhotoId === photo.id ? 1 : 0.95 }}
-                                  className="absolute top-2 right-2 px-2 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 bg-white/90 text-gray-700 hover:bg-white"
-                                >
-                                  {loadingPhotoId === photo.id ? (
-                                    <>
-                                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                      </svg>
-                                      <span>...</span>
-                                    </>
-                                  ) : (
-                                    <span>Set Sample</span>
-                                  )}
-                                </motion.button>
+                                {/* Action buttons */}
+                                <div className="absolute top-2 right-2 flex gap-1">
+                                  {/* Mark as sample button */}
+                                  <motion.button
+                                    onClick={() => togglePhotoSample(photo.id, photo.isSample)}
+                                    disabled={loadingPhotoId === photo.id || deletingPhotoId === photo.id}
+                                    whileHover={{ scale: (loadingPhotoId === photo.id || deletingPhotoId === photo.id) ? 1 : 1.05 }}
+                                    whileTap={{ scale: (loadingPhotoId === photo.id || deletingPhotoId === photo.id) ? 1 : 0.95 }}
+                                    className="px-2 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 bg-white/90 text-gray-700 hover:bg-white"
+                                    title="Set as sample"
+                                  >
+                                    {loadingPhotoId === photo.id ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        <span>...</span>
+                                      </>
+                                    ) : (
+                                      <span>Set Sample</span>
+                                    )}
+                                  </motion.button>
+
+                                  {/* Delete photo button */}
+                                  <motion.button
+                                    onClick={() => handleDeletePhoto(photo.id)}
+                                    disabled={deletingPhotoId === photo.id || loadingPhotoId === photo.id}
+                                    whileHover={{ scale: (deletingPhotoId === photo.id || loadingPhotoId === photo.id) ? 1 : 1.05 }}
+                                    whileTap={{ scale: (deletingPhotoId === photo.id || loadingPhotoId === photo.id) ? 1 : 0.95 }}
+                                    className="px-2 py-1 rounded-full font-semibold text-xs shadow-lg transition-all flex items-center gap-1 bg-red-500/90 text-white hover:bg-red-500"
+                                    title="Delete photo"
+                                  >
+                                    {deletingPhotoId === photo.id ? (
+                                      <>
+                                        <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        <span>...</span>
+                                      </>
+                                    ) : (
+                                      <span>🗑</span>
+                                    )}
+                                  </motion.button>
+                                </div>
                               </div>
 
                               {/* Photo Metadata Accordion */}

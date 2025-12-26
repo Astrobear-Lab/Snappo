@@ -669,6 +669,77 @@ export const PhotographerProvider = ({ children }) => {
     }
   }, [addNotification]);
 
+  const deletePhoto = useCallback(async (photoId, codeId) => {
+    if (!photoId) return;
+
+    try {
+      console.log('[PhotographerContext] Deleting photo:', photoId);
+
+      // Get photo details first for storage deletion
+      const { data: photo, error: fetchError } = await supabase
+        .from('photos')
+        .select('file_url, watermarked_url')
+        .eq('id', photoId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Delete from storage buckets
+      if (photo.file_url) {
+        const { error: originalError } = await supabase.storage
+          .from('photos-original')
+          .remove([photo.file_url]);
+
+        if (originalError) {
+          console.warn('[PhotographerContext] Failed to delete original photo from storage:', originalError);
+        }
+      }
+
+      if (photo.watermarked_url) {
+        const { error: watermarkedError } = await supabase.storage
+          .from('photos')
+          .remove([photo.watermarked_url]);
+
+        if (watermarkedError) {
+          console.warn('[PhotographerContext] Failed to delete watermarked photo from storage:', watermarkedError);
+        }
+      }
+
+      // Delete code_photos link
+      const { error: linkError } = await supabase
+        .from('code_photos')
+        .delete()
+        .eq('photo_id', photoId);
+
+      if (linkError) throw linkError;
+
+      // Delete photo record
+      const { error: deleteError } = await supabase
+        .from('photos')
+        .delete()
+        .eq('id', photoId);
+
+      if (deleteError) throw deleteError;
+
+      // Refresh codes to update UI
+      await fetchCodes();
+
+      addNotification({
+        type: 'success',
+        message: 'Photo deleted successfully',
+      });
+
+      return true;
+    } catch (error) {
+      console.error('[PhotographerContext] Failed to delete photo:', error);
+      addNotification({
+        type: 'error',
+        message: 'Failed to delete photo. Please try again.',
+      });
+      return false;
+    }
+  }, [addNotification, fetchCodes]);
+
   // Remove uploaded photos from the uploads list
   const removeUploads = useCallback((photoIds) => {
     setUploads((prev) => prev.filter((upload) => !photoIds.includes(upload.id)));
@@ -693,6 +764,7 @@ export const PhotographerProvider = ({ children }) => {
     updateCodePrice,
     fetchCodes,
     deleteCode,
+    deletePhoto,
     removeUploads,
   };
 

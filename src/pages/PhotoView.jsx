@@ -1174,21 +1174,6 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
                   </div>
                 </div>
 
-                {/* Temporary Testing Notice */}
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-6">
-                  <div className="flex items-start gap-3">
-                    <div className="text-2xl">⚠️</div>
-                    <div className="text-sm text-gray-700">
-                      <p className="font-semibold mb-1">Testing Mode:</p>
-                      <p className="text-gray-600">
-                        Email notifications are currently in testing. For now, please use{' '}
-                        <span className="font-mono bg-amber-100 px-2 py-0.5 rounded">joon0zo1022@gmail.com</span>{' '}
-                        to receive test emails.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Save Button */}
                 <motion.button
                   onClick={handleSaveEmail}
@@ -1211,9 +1196,12 @@ File URL: ${photoData?.file_url ? 'EXISTS' : 'NULL'}
                 <div className="inline-flex items-center gap-2 px-6 py-3 bg-green-50 border border-green-200 rounded-full">
                   <span className="text-xl">✓</span>
                   <span className="font-semibold text-green-800">
-                    We'll email you at {codeData.customer_email}
+                    Confirmation email sent to {codeData.customer_email}
                   </span>
                 </div>
+                <p className="text-sm text-gray-600 mt-3">
+                  We'll notify you again when your photos are ready
+                </p>
               </div>
             )}
 
